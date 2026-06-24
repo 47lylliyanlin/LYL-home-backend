@@ -8,6 +8,7 @@ import uvicorn
 from api.stt import transcribe_audio
 from api.tts import text_to_speech
 from api.memory import get_memory_summary
+from api.memory_extraction import extract_memory_from_conversation, save_extracted_memory
 import os
 
 app = FastAPI()
@@ -60,6 +61,13 @@ async def chat(request: ChatRequest):
         for block in response.content:
             if hasattr(block, 'text'):
                 reply_text += block.text
+
+        # 自动提取记忆
+        try:
+            extraction = await extract_memory_from_conversation(request.message, reply_text)
+            await save_extracted_memory(extraction)
+        except Exception as mem_error:
+            print(f"记忆提取失败: {mem_error}")
 
         return {
             "reply": reply_text
@@ -119,7 +127,14 @@ async def voice_chat(audio: UploadFile = File(...)):
         # 4. 生成语音回复
         audio_output_path = await text_to_speech(assistant_text)
 
-        # 5. 返回结果（包含用户音频URL、识别文字、AI回复文字和AI语音URL）
+        # 5. 自动提取记忆
+        try:
+            extraction = await extract_memory_from_conversation(user_text, assistant_text)
+            await save_extracted_memory(extraction)
+        except Exception as mem_error:
+            print(f"记忆提取失败: {mem_error}")
+
+        # 6. 返回结果（包含用户音频URL、识别文字、AI回复文字和AI语音URL）
         return {
             "user_audio_url": f"/audio/input/{audio_filename}",
             "user_text": user_text,
