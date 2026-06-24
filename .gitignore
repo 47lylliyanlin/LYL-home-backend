@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# 音频文件
+audio/input/*
+audio/output/*
+!audio/input/.gitkeep
+!audio/output/.gitkeep
+
+# 环境变量
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 日志
+*.log
+
+# 数据库
+*.db
+*.sqlite
+
+# ChromaDB向量数据库
+chroma_db/
