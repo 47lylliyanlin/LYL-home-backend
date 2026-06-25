@@ -1,0 +1,280 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kiro Memory Dashboard</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f4ef;
+      --panel: #ffffff;
+      --text: #24201c;
+      --muted: #746b62;
+      --line: #ded7cc;
+      --accent: #9b3f2e;
+      --soft: #f1e7df;
+      --ok: #2f6f4e;
+      --warn: #9b6a12;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    header {
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,0.8);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      backdrop-filter: blur(10px);
+    }
+    h1 { margin: 0; font-size: 20px; letter-spacing: 0; }
+    .sub { margin-top: 4px; color: var(--muted); font-size: 13px; }
+    main { padding: 18px; max-width: 1280px; margin: 0 auto; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    button {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button:hover { border-color: var(--accent); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 12px;
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      min-height: 120px;
+    }
+    .span-3 { grid-column: span 3; }
+    .span-4 { grid-column: span 4; }
+    .span-6 { grid-column: span 6; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+    h2 { margin: 0 0 10px; font-size: 15px; }
+    .metric { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #f0ebe4; }
+    .metric:last-child { border-bottom: 0; }
+    .label { color: var(--muted); }
+    .value { font-weight: 650; text-align: right; }
+    .pill { display: inline-block; padding: 3px 7px; border-radius: 999px; background: var(--soft); font-size: 12px; margin: 2px; }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 360px;
+      overflow: auto;
+      background: #fbfaf7;
+      border: 1px solid #eee8df;
+      border-radius: 6px;
+      padding: 10px;
+      font-size: 12px;
+    }
+    .list { display: flex; flex-wrap: wrap; gap: 4px; }
+    .small { font-size: 12px; color: var(--muted); }
+    .candidate { border-top: 1px solid #f0ebe4; padding: 10px 0; }
+    .candidate:first-child { border-top: 0; padding-top: 0; }
+    .candidate-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+    .candidate-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .danger:hover { border-color: #9b2f2f; color: #9b2f2f; }
+    .layer-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid #f0ebe4; }
+    .layer-row:last-child { border-bottom: 0; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    @media (max-width: 900px) {
+      .span-3, .span-4, .span-6, .span-8 { grid-column: span 12; }
+      main { padding: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Kiro Memory Dashboard</h1>
+    <div class="sub" id="status">读取中...</div>
+  </header>
+  <main>
+    <div class="toolbar">
+      <button id="refreshBtn">刷新</button>
+      <button id="dreamBtn">运行 Dream Light</button>
+      <button id="wordMapBtn">重建 Word Map</button>
+    </div>
+    <div class="grid">
+      <section class="span-3"><h2>Memory Counts</h2><div id="counts"></div></section>
+      <section class="span-3"><h2>Gateway</h2><div id="gateway"></div></section>
+      <section class="span-3"><h2>Dream / Weather</h2><div id="dream"></div></section>
+      <section class="span-3"><h2>Darkroom Door</h2><div id="darkroom"></div></section>
+      <section class="span-6"><h2>Word Map Top Concepts</h2><div class="list" id="concepts"></div></section>
+      <section class="span-6"><h2>Graph</h2><div id="graph"></div></section>
+      <section class="span-6"><h2>Profile</h2><pre id="profile"></pre></section>
+      <section class="span-6"><h2>Profile Fact Approval</h2><div id="candidates"></div></section>
+      <section class="span-6"><h2>Gateway Injection Layers</h2><div id="layers"></div></section>
+      <section class="span-6"><h2>Memory Seeds</h2><div id="seeds"></div></section>
+      <section class="span-6"><h2>Last Injected Context</h2><pre id="lastContext"></pre></section>
+      <section class="span-12"><h2>Pulse Raw</h2><pre id="raw"></pre></section>
+    </div>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const api = async (url, options) => {
+      const res = await fetch(url, options);
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      return res.json();
+    };
+    const metric = (label, value) => `<div class="metric"><span class="label">${label}</span><span class="value">${value ?? ''}</span></div>`;
+    const yn = (v) => v ? '<span class="ok">yes</span>' : '<span class="warn">no</span>';
+    const escapeHtml = (value) => String(value || '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+    function candidateStatus(preview) {
+      const match = String(preview || '').match(/status:\s*([^\n]+)/);
+      return match ? match[1].trim() : 'unknown';
+    }
+
+    function renderCandidates(items) {
+      if (!items.length) return '<span class="small">No profile candidates.</span>';
+      return items.map(item => {
+        const status = candidateStatus(item.preview);
+        const disabled = status === 'approved' || status === 'rejected' ? 'disabled' : '';
+        return `
+          <div class="candidate">
+            <div class="candidate-title">
+              <strong>${escapeHtml(item.name)}</strong>
+              <span class="pill">${escapeHtml(status)}</span>
+            </div>
+            <div class="small">${escapeHtml(item.updated_at || '')}</div>
+            <pre>${escapeHtml(item.preview || '')}</pre>
+            <div class="candidate-actions">
+              <button ${disabled} onclick="approveCandidate('${escapeHtml(item.name)}')">Approve</button>
+              <button ${disabled} class="danger" onclick="rejectCandidate('${escapeHtml(item.name)}')">Reject</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function renderLayers(layers) {
+      if (!layers || !layers.length) return '<span class="small">No layer data yet.</span>';
+      return layers.map(layer => `
+        <div class="layer-row">
+          <div><strong>${escapeHtml(layer.name)}</strong><div class="small">${escapeHtml(layer.role)}</div></div>
+          <span class="pill">${escapeHtml(layer.count)}</span>
+          <span>${layer.used ? '<span class="ok">on</span>' : '<span class="warn">off</span>'}</span>
+        </div>`).join('');
+    }
+
+    function renderSeeds(last) {
+      const direct = last.direct_ids || [];
+      const wake = last.wake_anchor_ids || [];
+      const detail = last.detail_source_ids || [];
+      const diffused = last.diffused_context || [];
+      const concepts = (last.word_map_hints && last.word_map_hints.concepts) || [];
+      const rows = [
+        metric('direct seeds', direct.length),
+        `<div class="small mono">${escapeHtml(direct.join(', ') || 'none')}</div>`,
+        metric('wake anchors', wake.length),
+        `<div class="small mono">${escapeHtml(wake.join(', ') || 'none')}</div>`,
+        metric('detail source ids', detail.length),
+        `<div class="small mono">${escapeHtml(detail.join(', ') || 'none')}</div>`,
+        metric('diffused memories', diffused.length),
+        `<div class="small mono">${escapeHtml(diffused.map(x => x.id).join(', ') || 'none')}</div>`,
+        metric('word hints', concepts.length),
+        `<div class="small mono">${escapeHtml(concepts.map(x => x.word).join(', ') || 'none')}</div>`,
+        metric('just now triggered', yn(last.just_now_triggered)),
+        metric('detail requested', yn(last.detail_requested)),
+      ];
+      return rows.join('');
+    }
+
+    async function approveCandidate(name) {
+      await api(`/api/profile/candidates/${encodeURIComponent(name)}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reviewer: 'dashboard' })
+      });
+      await load();
+    }
+
+    async function rejectCandidate(name) {
+      const reason = prompt('Reject reason, optional:') || '';
+      await api(`/api/profile/candidates/${encodeURIComponent(name)}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reviewer: 'dashboard', reason })
+      });
+      await load();
+    }
+
+    async function load() {
+      $('status').textContent = '读取中...';
+      const [pulse, profile, candidates, last] = await Promise.all([
+        api('/api/pulse'),
+        api('/api/profile'),
+        api('/api/profile/candidates').catch(() => ({ candidates: [] })),
+        api('/api/gateway/last-context').catch(() => ({})),
+      ]);
+
+      $('counts').innerHTML = Object.entries(pulse.memory_counts || {}).map(([k,v]) => metric(k, v)).join('');
+      const g = pulse.gateway || {};
+      $('gateway').innerHTML = [
+        metric('last context', g.last_context_at || 'none'),
+        metric('profile', yn(g.profile_context_used)),
+        metric('weather', yn(g.relationship_weather_used)),
+        metric('darkroom', yn(g.darkroom_door_used)),
+        metric('just now', yn(g.just_now_used)),
+        metric('detail recall', yn(g.detail_recall_used)),
+        metric('scene count', g.scene_count),
+        metric('wake count', g.wake_count),
+      ].join('');
+      const d = pulse.dream_light || {};
+      $('dream').innerHTML = [
+        metric('weather', d.relationship_weather?.label || 'unknown'),
+        metric('tone', d.relationship_weather?.tone || ''),
+        metric('feel sampled', d.feel_count_sampled),
+        metric('ran at', d.ran_at || ''),
+      ].join('');
+      const dark = pulse.darkroom || {};
+      $('darkroom').innerHTML = [
+        metric('door', dark.door),
+        metric('pending', yn(dark.has_unresolved_reflection)),
+        metric('notes', dark.note_count),
+        metric('body visible', yn(dark.body_visible)),
+      ].join('');
+      const wm = pulse.word_map || {};
+      $('concepts').innerHTML = (wm.top_concepts || []).map(w => `<span class="pill">${w}</span>`).join('') || '<span class="small">none</span>';
+      const graph = pulse.graph || {};
+      $('graph').innerHTML = [
+        metric('moments', graph.moments),
+        metric('edges', graph.edges),
+        metric('dir', graph.graph_dir),
+        metric('word nodes', wm.node_count),
+        metric('word edges', wm.edge_count),
+      ].join('');
+      $('profile').textContent = JSON.stringify(profile, null, 2);
+      $('candidates').innerHTML = renderCandidates(candidates.candidates || []);
+      $('layers').innerHTML = renderLayers(last.layers || []);
+      $('seeds').innerHTML = renderSeeds(last || {});
+      $('lastContext').textContent = JSON.stringify(last, null, 2);
+      $('raw').textContent = JSON.stringify(pulse, null, 2);
+      $('status').textContent = `最后刷新：${new Date().toLocaleString()}`;
+    }
+
+    $('refreshBtn').onclick = () => load().catch(err => $('status').textContent = err.message);
+    $('dreamBtn').onclick = async () => { await api('/api/dream/light/run', { method: 'POST' }); await load(); };
+    $('wordMapBtn').onclick = async () => { await api('/api/memory/word-map/rebuild', { method: 'POST' }); await load(); };
+    $('maintenanceBtn').onclick = async () => { await api('/api/maintenance/run', { method: 'POST' }); await load(); };
+    load().catch(err => $('status').textContent = err.message);
+  </script>
+</body>
+</html>

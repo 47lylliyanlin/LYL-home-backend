@@ -691,3 +691,81 @@ memories_text = "\n".join(f"- {m}" for m in memories)
 ---
 
 **本文档持续更新中...**
+
+---
+
+## 2026-06-26 Ombre Gateway Memory API Update
+
+This update adds a Gateway-style memory layer on top of the original bucket/search memory system. Chat and voice chat still use the same public endpoints, but requests now pass through Ombre Gateway before the upstream model call.
+
+### Main Chat Flow
+
+```text
+Client
+  -> POST /api/chat or POST /api/voice-chat
+  -> Ombre Gateway prepares quiet context
+     -> Profile Wake Context
+     -> Relationship Weather
+     -> Darkroom Door state
+     -> Optional Wake Anchors
+     -> Just Now Chat Context when triggered
+     -> Scene Memory direct seeds
+     -> Graph Diffusion, only after direct seeds
+     -> Word Map Lite weak hints
+     -> Detail Recall for follow-up questions
+  -> Upstream model replies
+  -> Gateway records recent turns
+  -> Memory extraction/consolidation runs after reply
+  -> Moment/edge graph is updated when possible
+```
+
+### Gateway and Debug Endpoints
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/gateway/last-context` | Shows the last context package injected by Gateway. Useful for debugging memory behavior. |
+| GET | `/api/pulse` | Read-only system pulse: memory counts, Gateway flags, graph, word map, dream, darkroom. |
+| GET | `/api/introspection` | Read-only introspection summary. Does not expose Darkroom note bodies. |
+
+### Profile and Approval Endpoints
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/profile` | Reads profile documents: user portrait, assistant persona, relationship portrait, recent continuity. |
+| GET | `/api/profile/candidates` | Lists profile fact candidates. Candidates are not confirmed facts. |
+| POST | `/api/profile/candidates` | Creates a profile candidate. Evidence ids are optional but required for stronger confidence. |
+| POST | `/api/profile/candidates/{candidate_name}/approve` | Promotes a reviewed candidate into User Portrait. |
+| POST | `/api/profile/candidates/{candidate_name}/reject` | Rejects a candidate without promoting it. |
+
+### Memory Graph, Word Map, Dream, Darkroom
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/memory/graph/status` | Returns moment/edge graph counts. |
+| GET | `/api/memory/word-map` | Reads Word Map Lite. This is observational, not evidence. |
+| POST | `/api/memory/word-map/rebuild` | Rebuilds Word Map Lite from buckets and moments. |
+| GET | `/api/darkroom/status` | Returns Darkroom door state only. Note bodies are never exposed. |
+| POST | `/api/darkroom/enter` | Writes a private Darkroom note and returns metadata only. |
+| GET | `/api/dream/light/status` | Reads Dream Light state and relationship weather. |
+| POST | `/api/dream/light/run` | Runs shallow Dream Light digestion. |
+| POST | `/api/maintenance/run` | Runs safe maintenance: Word Map rebuild + Dream Light. Does not read Darkroom note bodies. |
+
+### Dashboard
+
+Dashboard is mounted at:
+
+```text
+http://localhost:8000/dashboard/
+```
+
+It shows memory counts, Gateway injection layers, direct seeds, wake anchors, diffused memories, Word Map hints, profile candidates, Dream Light, Darkroom door state, and raw pulse data. It also provides buttons for Dream Light, Word Map rebuild, and full maintenance.
+
+### Important Behavior Rules
+
+- Memory is injected as quiet continuity, not something the model should recite.
+- Just Now questions, such as asking what was just said, the previous sentence, or the current code word, use recent chat context first and skip long-term scene search.
+- Wake Context is intentionally small: profile documents plus at most a few stable wake anchors.
+- Graph Diffusion only happens after direct seed memories are found.
+- Word Map Lite is a weak navigation signal and must not be treated as factual evidence.
+- Profile facts are semi-automatic: they should be approved before becoming confirmed portrait content.
+

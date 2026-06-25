@@ -74,11 +74,11 @@ def import_our_memories():
                 arousal=0.5   # 默认中等唤醒度
             )
 
-            print(f"✓ 导入: {file_path.name} → {memory.id} ({mem_type})")
+            print(f"[OK] 导入: {file_path.name} -> {memory.id} ({mem_type})")
             imported_count += 1
 
         except Exception as e:
-            print(f"✗ 导入失败 {file_path.name}: {e}")
+            print(f"[ERROR] 导入失败 {file_path.name}: {e}")
 
     print(f"\n导入完成！共 {imported_count} 条记忆")
 

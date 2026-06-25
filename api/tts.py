@@ -1,47 +1,94 @@
 """
-TTS (Text-to-Speech) 模块
-使用 Edge TTS 将文字转换为语音
+TTS (Text-to-Speech) module.
+
+Uses ElevenLabs to convert assistant text into an MP3 file saved under
+audio/output so the existing FastAPI static file URLs keep working.
 """
 
-import edge_tts
-import asyncio
-import os
 from datetime import datetime
+import os
+from pathlib import Path
+from typing import Any
 
-# Edge TTS 中文语音选项
-# 可以选择不同的声音
-VOICE = "zh-CN-XiaoxiaoNeural"  # 晓晓 - 女声，温柔
-# 其他选项：
-# "zh-CN-YunxiNeural"  # 云希 - 男声
-# "zh-CN-YunyangNeural"  # 云扬 - 男声，新闻播报风格
-# "zh-CN-XiaoyiNeural"  # 晓伊 - 女声，亲切
+import httpx
+from dotenv import load_dotenv
+
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+load_dotenv(BACKEND_DIR / ".env")
 
 OUTPUT_DIR = "audio/output"
+ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1/text-to-speech"
+DEFAULT_MODEL_ID = "eleven_multilingual_v2"
+DEFAULT_OUTPUT_FORMAT = "mp3_44100_128"
 
-async def text_to_speech_async(text: str, output_path: str = None) -> str:
+
+def _get_required_env(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
+
+
+def _build_payload(text: str) -> dict[str, Any]:
+    model_id = os.getenv("ELEVENLABS_MODEL_ID", DEFAULT_MODEL_ID)
+    stability = float(os.getenv("ELEVENLABS_STABILITY", "0.5"))
+    similarity_boost = float(os.getenv("ELEVENLABS_SIMILARITY_BOOST", "0.75"))
+    style = float(os.getenv("ELEVENLABS_STYLE", "0.0"))
+    use_speaker_boost = os.getenv("ELEVENLABS_USE_SPEAKER_BOOST", "true").lower() == "true"
+
+    return {
+        "text": text,
+        "model_id": model_id,
+        "voice_settings": {
+            "stability": stability,
+            "similarity_boost": similarity_boost,
+            "style": style,
+            "use_speaker_boost": use_speaker_boost,
+        },
+    }
+
+
+async def text_to_speech_async(text: str, output_path: str | None = None) -> str:
     """
-    将文字转换为语音（异步）
-
-    Args:
-        text: 要转换的文字
-        output_path: 输出文件路径（可选）
-
-    Returns:
-        生成的音频文件路径
+    Convert text to speech with ElevenLabs and return the generated audio path.
     """
-    # 确保输出目录存在
+    if not text or not text.strip():
+        raise ValueError("TTS text cannot be empty")
+
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # 如果没有指定输出路径，自动生成
     if not output_path:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         output_path = os.path.join(OUTPUT_DIR, f"tts_{timestamp}.mp3")
 
-    # 使用 Edge TTS 生成语音
-    communicate = edge_tts.Communicate(text, VOICE)
-    await communicate.save(output_path)
+    api_key = _get_required_env("ELEVENLABS_API_KEY")
+    voice_id = _get_required_env("ELEVENLABS_VOICE_ID")
+    output_format = os.getenv("ELEVENLABS_OUTPUT_FORMAT", DEFAULT_OUTPUT_FORMAT)
+
+    url = f"{ELEVENLABS_API_URL}/{voice_id}"
+    headers = {
+        "xi-api-key": api_key,
+        "Accept": "audio/mpeg",
+        "Content-Type": "application/json",
+    }
+    params = {"output_format": output_format}
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.post(
+            url,
+            headers=headers,
+            params=params,
+            json=_build_payload(text),
+        )
+
+    if response.status_code >= 400:
+        raise RuntimeError(f"ElevenLabs TTS failed: {response.status_code} {response.text}")
+
+    with open(output_path, "wb") as audio_file:
+        audio_file.write(response.content)
 
     return output_path
 
-# 导出异步版本为主要函数
+
 text_to_speech = text_to_speech_async

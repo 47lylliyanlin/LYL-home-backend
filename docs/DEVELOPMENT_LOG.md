@@ -841,3 +841,85 @@ backend/
 ---
 
 **最后更新：** 2026年6月24日深夜
+
+---
+
+## 2026-06-26 - Ombre Gateway Memory System Upgrade
+
+### Goal
+
+Upgrade the simplified memory search system into a more complete Ombre-Brain-inspired architecture. The goal is continuity without making the assistant repeatedly recite memories.
+
+### Completed Work
+
+1. Added Ombre Gateway request preparation in `api/gateway.py`.
+   - Chat and voice chat now prepare memory context before calling the upstream model.
+   - Gateway records recent turns and consolidates memory after the reply.
+   - Prompt rules were tightened so memory stays quiet unless the user asks what is remembered.
+
+2. Added Wake Context.
+   - Profile documents are injected first: Assistant Persona, User Portrait, Relationship Portrait, Recent Continuity.
+   - Relationship Weather and Darkroom Door state are included.
+   - Wake anchors are limited to a small number of stable permanent memories.
+
+3. Added Just Now Chat Context.
+   - Trigger words include just-now / previous sentence / code word / keyword / asked-you-to-remember style questions.
+   - Just Now turns use recent chat context and skip long-term scene memory search.
+
+4. Added semi-automatic profile layer in `api/profile.py`.
+   - Profile candidates can be created, approved, or rejected.
+   - Approved candidates are promoted into User Portrait.
+   - Rejected candidates remain out of confirmed profile facts.
+
+5. Added graph memory foundation in `api/memory_graph.py`.
+   - Moments and edges are stored in JSONL.
+   - Supported edge types include updates, supports, blocks, promises, continues, evidence, diffuses.
+   - Detail recall and controlled graph diffusion are available.
+
+6. Added Word Map Lite in `api/word_map.py`.
+   - Rebuilds concepts and co-occurrence edges from buckets and moments.
+   - Acts only as a weak concept navigation hint.
+   - Does not bypass recall filtering or become evidence.
+
+7. Added Darkroom in `api/darkroom.py`.
+   - Stores private internal notes behind a door state.
+   - Public endpoints expose metadata only and never note bodies.
+
+8. Added Dream Light and maintenance in `api/dream.py`.
+   - Produces Relationship Weather.
+   - Samples safe surfaces such as recent continuity, feel memories, graph status, Word Map, and Darkroom door state.
+   - Full maintenance runs Word Map rebuild plus Dream Light.
+
+9. Added Pulse/Introspection in `api/pulse.py`.
+   - Provides read-only diagnostics for the memory system.
+   - Does not expose Darkroom note bodies.
+
+10. Added Dashboard at `dashboard/index.html`.
+    - Shows Gateway injection layers, direct seeds, wake anchors, graph diffusion, Word Map hints, profile candidates, Dream Light, Darkroom Door, and Pulse Raw.
+    - Includes buttons for Dream Light, Word Map rebuild, and full maintenance.
+
+11. Added bucket v2 helpers and migration dry-run.
+    - `api/bucket_format.py` defines clearer sections: Fact, Evidence, My Understanding, Promise / Next, Temperature, Original.
+    - `tools/migrate_buckets_v2.py` supports dry-run by default and `--apply` for conversion.
+
+12. Added Windows maintenance script `ob.ps1`.
+    - Start/stop/restart backend.
+    - Health check.
+    - Backup memory.
+    - Rebuild Word Map.
+    - Run Dream Light.
+    - Run full maintenance.
+    - Run bucket v2 migration dry-run.
+
+### Validation
+
+- Backend modules compiled successfully.
+- Gateway normal message path produced scene memories and wake anchors.
+- Just Now path produced recent-chat context and skipped scene memory search.
+- Maintenance API rebuilt Word Map and ran Dream Light.
+- Dashboard returned HTTP 200 and displayed new panels.
+
+### Notes
+
+Runtime memory files, Darkroom note bodies, and recent chat runtime state should be treated as local data. Code and documentation can be pushed to GitHub, but private runtime data should not be pushed unless intentionally exporting memories.
+

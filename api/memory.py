@@ -1,259 +1,317 @@
 """
-Kiro记忆系统 - 基于Ombre-Brain设计
-支持动态记忆、衰减、自动归档
+Kiro???? - ??Ombre-Brain??
+????????????????????????
 """
 
-import os
+import math
+import re
 import yaml
 import chromadb
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Dict, Any, Optional
+from .bucket_format import direct_seed_text
 
-# 配置
+# ??
 MEMORY_DIR = "./memory"
 CHROMA_DIR = "./chroma_db"
 
-# 初始化ChromaDB
+# ???ChromaDB
 chroma_client = chromadb.PersistentClient(path=CHROMA_DIR)
 memory_collection = chroma_client.get_or_create_collection(
     name="kiro_memories",
     metadata={"hnsw:space": "cosine"}
 )
 
+
 class Memory:
-    """单条记忆"""
-    def __init__(self, file_path: str, metadata: Dict, content: str):
+    """????"""
+
+    def __init__(self, file_path: Optional[str], metadata: Dict, content: str):
         self.file_path = file_path
         self.id = metadata.get('id', self._generate_id())
-        self.importance = metadata.get('importance', 5)
-        self.valence = metadata.get('valence', 0.5)
-        self.arousal = metadata.get('arousal', 0.5)
-        self.tags = metadata.get('tags', [])
+        self.name = metadata.get('name', self.id)
+        self.domain = metadata.get('domain', '')
+        self.importance = int(metadata.get('importance', 5))
+        self.valence = float(metadata.get('valence', 0.5))
+        self.arousal = float(metadata.get('arousal', 0.5))
+        self.tags = metadata.get('tags', []) or []
         self.created = self._parse_datetime(metadata.get('created'))
         self.last_used = self._parse_datetime(metadata.get('last_used', metadata.get('created')))
-        self.use_count = metadata.get('use_count', 0)
+        self.last_active = self._parse_datetime(metadata.get('last_active', metadata.get('last_used', metadata.get('created'))))
+        self.use_count = int(metadata.get('use_count', 0))
+        self.activation_count = float(metadata.get('activation_count', self.use_count))
         self.type = metadata.get('type', 'dynamic')
+        self.pinned = bool(metadata.get('pinned', self.type == 'permanent'))
+        self.resolved = bool(metadata.get('resolved', False))
+        self.digested = bool(metadata.get('digested', False))
         self.content = content
 
     def _generate_id(self) -> str:
-        """生成唯一ID"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         return f"mem_{timestamp}"
 
-    def _parse_datetime(self, dt_str: Any) -> datetime:
-        """解析时间字符串"""
-        if isinstance(dt_str, datetime):
-            return dt_str
-        if isinstance(dt_str, str):
+    def _parse_datetime(self, value: Any) -> datetime:
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
             try:
-                return datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
-            except:
+                return datetime.fromisoformat(value.replace('Z', '+00:00'))
+            except Exception:
                 pass
         return datetime.now()
 
     def calculate_score(self) -> float:
-        """
-        计算记忆分数（用于排序）
-        score = importance × decay_factor × activation_bonus
-        """
-        # permanent类型不衰减
-        if self.type == 'permanent':
-            return self.importance * 10
+        """??????permanent/feel/plan/letter ?????????????"""
+        if self.type in ('permanent', 'feel', 'plan', 'letter') or self.pinned:
+            return 50.0
 
-        # 计算时间衰减
-        days_since_last_used = (datetime.now() - self.last_used).days
-        decay_factor = 1 / (1 + days_since_last_used * 0.05)
+        hours_since_active = max((datetime.now() - self.last_active).total_seconds() / 3600, 0)
+        time_weight = math.exp(-0.02 * (hours_since_active / 24))
+        activation_bonus = 1 + min(self.activation_count * 0.08, 2.0)
+        emotion_bonus = 1 + (self.arousal * 0.25)
 
-        # 使用次数加成
-        activation_bonus = 1 + (self.use_count * 0.1)
+        state_factor = 1.0
+        if self.resolved:
+            state_factor *= 0.05 if self.digested else 0.3
 
-        score = self.importance * decay_factor * activation_bonus
-        return score
+        return self.importance * time_weight * activation_bonus * emotion_bonus * state_factor
 
     def mark_used(self):
-        """标记记忆被使用"""
-        self.last_used = datetime.now()
+        now = datetime.now()
+        self.last_used = now
+        self.last_active = now
         self.use_count += 1
+        self.activation_count += 1
 
     def to_dict(self) -> Dict:
-        """转换为字典"""
         return {
             'id': self.id,
+            'name': self.name,
+            'domain': self.domain,
             'importance': self.importance,
             'valence': self.valence,
             'arousal': self.arousal,
             'tags': self.tags,
             'created': self.created.isoformat(),
             'last_used': self.last_used.isoformat(),
+            'last_active': self.last_active.isoformat(),
             'use_count': self.use_count,
+            'activation_count': self.activation_count,
             'type': self.type,
+            'pinned': self.pinned,
+            'resolved': self.resolved,
+            'digested': self.digested,
             'content': self.content,
             'score': self.calculate_score()
         }
 
     def to_yaml_frontmatter(self) -> str:
-        """生成YAML frontmatter"""
-        return f"""---
-id: {self.id}
-importance: {self.importance}
-valence: {self.valence}
-arousal: {self.arousal}
-tags: {self.tags}
-created: {self.created.isoformat()}
-last_used: {self.last_used.isoformat()}
-use_count: {self.use_count}
-type: {self.type}
----
+        metadata = {
+            'id': self.id,
+            'name': self.name,
+            'domain': self.domain,
+            'importance': self.importance,
+            'valence': self.valence,
+            'arousal': self.arousal,
+            'tags': self.tags,
+            'created': self.created.isoformat(),
+            'last_used': self.last_used.isoformat(),
+            'last_active': self.last_active.isoformat(),
+            'use_count': self.use_count,
+            'activation_count': self.activation_count,
+            'type': self.type,
+            'pinned': self.pinned,
+            'resolved': self.resolved,
+            'digested': self.digested,
+        }
+        frontmatter = yaml.safe_dump(metadata, allow_unicode=True, sort_keys=False).strip()
+        return f"---\n{frontmatter}\n---\n\n{self.content}\n"
 
-{self.content}
-"""
 
 class MemorySystem:
-    """记忆系统"""
+    """Ombre-Brain??????"""
 
     def __init__(self):
         self.memory_dir = Path(MEMORY_DIR)
         self._ensure_directories()
 
     def _ensure_directories(self):
-        """确保目录存在"""
         (self.memory_dir / "permanent").mkdir(parents=True, exist_ok=True)
         (self.memory_dir / "dynamic").mkdir(parents=True, exist_ok=True)
         (self.memory_dir / "feel").mkdir(parents=True, exist_ok=True)
+        (self.memory_dir / "plans" / "active").mkdir(parents=True, exist_ok=True)
+        (self.memory_dir / "letters" / "history").mkdir(parents=True, exist_ok=True)
         (self.memory_dir / "archive").mkdir(parents=True, exist_ok=True)
 
-    def load_memory_file(self, file_path: Path) -> Optional[Memory]:
-        """加载单个记忆文件"""
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
+    def _bucket_paths(self, include_archive: bool = False) -> List[Path]:
+        paths = [
+            self.memory_dir / "permanent",
+            self.memory_dir / "dynamic",
+            self.memory_dir / "feel",
+            self.memory_dir / "plans" / "active",
+            self.memory_dir / "letters" / "history",
+        ]
+        if include_archive:
+            paths.append(self.memory_dir / "archive")
+        return paths
 
-            # 解析YAML frontmatter
+    def _infer_type_from_path(self, file_path: Path) -> str:
+        parts = set(file_path.parts)
+        if 'plans' in parts:
+            return 'plan'
+        if 'letters' in parts:
+            return 'letter'
+        return file_path.parent.name
+
+    def load_memory_file(self, file_path: Path) -> Optional[Memory]:
+        try:
+            content = file_path.read_text(encoding='utf-8')
+
             if content.startswith('---'):
                 parts = content.split('---', 2)
                 if len(parts) >= 3:
                     metadata = yaml.safe_load(parts[1]) or {}
+                    metadata.setdefault('type', self._infer_type_from_path(file_path))
                     body = parts[2].strip()
                     return Memory(str(file_path), metadata, body)
 
-            # 没有frontmatter，创建默认元数据
-            metadata = {'type': file_path.parent.name}
+            metadata = {'type': self._infer_type_from_path(file_path)}
             return Memory(str(file_path), metadata, content.strip())
 
         except Exception as e:
-            print(f"读取记忆文件失败 {file_path}: {e}")
+            print(f"???????? {file_path}: {e}")
             return None
 
     def load_all_memories(self, include_archive: bool = False) -> List[Memory]:
-        """
-        加载所有记忆
-
-        Args:
-            include_archive: 是否包含归档记忆
-        """
         memories = []
-
-        # 扫描目录
-        dirs = ['permanent', 'dynamic', 'feel']
-        if include_archive:
-            dirs.append('archive')
-
-        for dir_name in dirs:
-            dir_path = self.memory_dir / dir_name
+        for dir_path in self._bucket_paths(include_archive):
             if dir_path.exists():
-                for file_path in dir_path.glob("*.md"):
+                for file_path in dir_path.rglob("*.md"):
                     memory = self.load_memory_file(file_path)
                     if memory:
                         memories.append(memory)
-
         return memories
 
-    def search_memories(self, query: str, top_k: int = 5) -> List[Memory]:
-        """
-        检索记忆（向量搜索 + 衰减分排序）
+    def _tokenize(self, text: str) -> List[str]:
+        return re.findall(r"[\u4e00-\u9fff]|[A-Za-z0-9_]+", text.lower())
 
-        Args:
-            query: 查询文本
-            top_k: 返回数量
-        """
-        # 1. 向量搜索
+    def _keyword_score(self, query: str, memory: Memory) -> float:
+        query_tokens = self._tokenize(query)
+        if not query_tokens:
+            return 0.0
+
+        haystacks = [
+            (memory.name, 3.0),
+            (memory.domain, 2.5),
+            (' '.join(memory.tags), 2.0),
+            (direct_seed_text(memory.content)[:1000], 1.0),
+        ]
+
+        score = 0.0
+        for token in query_tokens:
+            for text, weight in haystacks:
+                if token and token in str(text).lower():
+                    score += weight
+                    break
+        return min(score / max(len(query_tokens), 1), 10.0)
+
+    def _vector_scores(self, query: str, n_results: int) -> Dict[str, float]:
         try:
-            results = memory_collection.query(
-                query_texts=[query],
-                n_results=top_k * 2  # 多取一些，后面再排序
-            )
-
-            if not results['ids'] or not results['ids'][0]:
-                return []
-
-            memory_ids = results['ids'][0]
+            results = memory_collection.query(query_texts=[query], n_results=n_results)
+            ids = results.get('ids', [[]])[0]
+            distances = results.get('distances', [[]])[0] if results.get('distances') else []
+            scores = {}
+            for index, mem_id in enumerate(ids):
+                distance = distances[index] if index < len(distances) else 1.0
+                scores[mem_id] = max(0.0, 1.0 - float(distance)) * 10
+            return scores
         except Exception as e:
-            print(f"向量搜索失败: {e}")
-            memory_ids = []
+            print(f"??????: {e}")
+            return {}
 
-        # 2. 加载完整记忆
-        all_memories = self.load_all_memories()
-        id_to_memory = {m.id: m for m in all_memories}
+    def search_memories(
+        self,
+        query: str,
+        top_k: int = 5,
+        include_feel: bool = False,
+        include_archive: bool = False,
+        domain: str = "",
+        tags: List[str] = None,
+        importance_min: int = -1,
+        touch: bool = True
+    ) -> List[Memory]:
+        """????? + ???? + ???????????????feel/plan/letter?"""
+        tags = tags or []
+        all_memories = self.load_all_memories(include_archive=include_archive)
+        candidates = []
 
-        found_memories = []
-        for mem_id in memory_ids:
-            if mem_id in id_to_memory:
-                found_memories.append(id_to_memory[mem_id])
+        for memory in all_memories:
+            if memory.type in ('feel', 'plan', 'letter') and not include_feel:
+                continue
+            if domain and memory.domain != domain and memory.type != domain:
+                continue
+            if tags and not set(tags).intersection(set(memory.tags)):
+                continue
+            if importance_min >= 1 and memory.importance < importance_min:
+                continue
+            candidates.append(memory)
 
-        # 如果向量搜索没结果，返回所有记忆
-        if not found_memories:
-            found_memories = all_memories
+        vector_scores = self._vector_scores(query, max(top_k * 4, 10)) if query else {}
+        scored = []
+        for memory in candidates:
+            keyword = self._keyword_score(query, memory)
+            vector = vector_scores.get(memory.id, 0.0)
+            decay = memory.calculate_score()
+            final_score = (keyword * 2.0) + (vector * 1.5) + decay
+            scored.append((final_score, memory))
 
-        # 3. 按分数排序
-        found_memories.sort(key=lambda m: m.calculate_score(), reverse=True)
+        scored.sort(key=lambda item: item[0], reverse=True)
+        found_memories = [memory for _, memory in scored[:top_k]]
 
-        # 4. 标记使用
-        for memory in found_memories[:top_k]:
-            memory.mark_used()
-            self.save_memory(memory)
+        if touch:
+            for memory in found_memories:
+                if memory.type in ('feel', 'plan', 'letter'):
+                    continue
+                memory.mark_used()
+                self.save_memory(memory)
 
-        return found_memories[:top_k]
+        return found_memories
 
     def save_memory(self, memory: Memory) -> bool:
-        """
-        保存记忆到文件
-
-        Args:
-            memory: Memory对象
-        """
         try:
-            # 确定保存路径
-            if memory.file_path:
-                file_path = Path(memory.file_path)
-            else:
-                # 新记忆，根据type决定目录
-                dir_name = memory.type
-                file_path = self.memory_dir / dir_name / f"{memory.id}.md"
+            file_path = Path(memory.file_path) if memory.file_path else self._path_for_new_memory(memory)
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.write_text(memory.to_yaml_frontmatter(), encoding='utf-8')
+            memory.file_path = str(file_path)
 
-            # 写入文件
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(memory.to_yaml_frontmatter())
-
-            # 更新向量数据库
             try:
                 memory_collection.upsert(
                     ids=[memory.id],
-                    documents=[memory.content],
+                    documents=[direct_seed_text(memory.content)],
                     metadatas=[{
                         'importance': memory.importance,
                         'type': memory.type,
+                        'domain': memory.domain,
                         'tags': ','.join(memory.tags)
                     }]
                 )
             except Exception as e:
-                print(f"更新向量数据库失败: {e}")
+                print(f"?????????: {e}")
 
             return True
 
         except Exception as e:
-            print(f"保存记忆失败: {e}")
+            print(f"??????: {e}")
             return False
+
+    def _path_for_new_memory(self, memory: Memory) -> Path:
+        if memory.type == 'plan':
+            return self.memory_dir / "plans" / "active" / f"{memory.id}.md"
+        if memory.type == 'letter':
+            return self.memory_dir / "letters" / "history" / f"{memory.id}.md"
+        dir_name = memory.type if memory.type in ('permanent', 'dynamic', 'feel', 'archive') else 'dynamic'
+        return self.memory_dir / dir_name / f"{memory.id}.md"
 
     def create_memory(
         self,
@@ -262,52 +320,43 @@ class MemorySystem:
         mem_type: str = "dynamic",
         tags: List[str] = None,
         valence: float = 0.5,
-        arousal: float = 0.5
+        arousal: float = 0.5,
+        name: str = "",
+        domain: str = ""
     ) -> Memory:
-        """
-        创建新记忆
-
-        Args:
-            content: 记忆内容
-            importance: 重要度 1-10
-            mem_type: 类型 permanent/dynamic/feel
-            tags: 标签列表
-            valence: 情感效价 0-1
-            arousal: 情感唤醒度 0-1
-        """
+        now = datetime.now().isoformat()
         metadata = {
-            'importance': importance,
+            'name': name,
+            'domain': domain,
+            'importance': min(max(int(importance), 1), 10),
             'type': mem_type,
             'tags': tags or [],
-            'valence': valence,
-            'arousal': arousal,
-            'created': datetime.now().isoformat(),
-            'last_used': datetime.now().isoformat(),
-            'use_count': 0
+            'valence': min(max(float(valence), 0.0), 1.0),
+            'arousal': min(max(float(arousal), 0.0), 1.0),
+            'created': now,
+            'last_used': now,
+            'last_active': now,
+            'use_count': 0,
+            'activation_count': 0,
+            'pinned': mem_type == 'permanent',
+            'resolved': False,
+            'digested': False,
         }
 
         memory = Memory(None, metadata, content)
+        if not memory.name:
+            memory.name = memory.id
         self.save_memory(memory)
-
         return memory
 
     def archive_old_memories(self, score_threshold: float = 2.0):
-        """
-        归档低分记忆
-
-        Args:
-            score_threshold: 分数阈值，低于此值的dynamic记忆会被归档
-        """
         memories = self.load_all_memories()
 
         for memory in memories:
-            # 只归档dynamic类型
             if memory.type != 'dynamic':
                 continue
 
-            # 分数低于阈值
             if memory.calculate_score() < score_threshold:
-                # 移动到archive目录
                 old_path = Path(memory.file_path)
                 new_path = self.memory_dir / "archive" / old_path.name
 
@@ -315,41 +364,45 @@ class MemorySystem:
                     old_path.rename(new_path)
                     memory.file_path = str(new_path)
                     memory.type = 'archive'
-                    print(f"归档记忆: {memory.id}")
+                    self.save_memory(memory)
+                    print(f"????: {memory.id}")
                 except Exception as e:
-                    print(f"归档失败 {memory.id}: {e}")
+                    print(f"???? {memory.id}: {e}")
 
     def format_memories_for_claude(self, memories: List[Memory]) -> str:
-        """格式化记忆为Claude可读文本"""
         if not memories:
-            return "（暂无相关记忆）"
+            return "(No relevant memories yet)"
 
-        text = "# 我的记忆\n\n"
+        text = "# My memories\n\n"
 
         for memory in memories:
-            # 显示标签
             tags_str = ', '.join(memory.tags) if memory.tags else ''
+            title = memory.name or memory.id
 
-            text += f"## {memory.id}\n"
+            text += f"## {title}\n"
             if tags_str:
-                text += f"*标签: {tags_str}*\n\n"
-
-            text += f"{memory.content}\n\n"
-
-            # 显示情感坐标（调试用）
-            # text += f"*[重要度:{memory.importance} 效价:{memory.valence} 唤醒:{memory.arousal}]*\n\n"
-
-            text += "---\n\n"
+                text += f"*??: {tags_str}*\n\n"
+            text += f"{memory.content}\n\n---\n\n"
 
         return text
 
-# 全局实例
+    def get_relevant_memory_context(self, query: str, top_k: int = 6) -> str:
+        memories = self.search_memories(query=query, top_k=top_k)
+        return self.format_memories_for_claude(memories)
+
+
+# ????
 memory_system = MemorySystem()
 
-# 兼容旧接口
+
 def get_memory_summary() -> str:
-    """获取记忆摘要（兼容旧代码）"""
+    """?????????????????"""
     memories = memory_system.load_all_memories()
-    # 按分数排序，取前5条
+    memories = [m for m in memories if m.type not in ('feel', 'plan', 'letter')]
     memories.sort(key=lambda m: m.calculate_score(), reverse=True)
     return memory_system.format_memories_for_claude(memories[:5])
+
+
+def get_relevant_memory_summary(query: str, top_k: int = 6) -> str:
+    """???????????"""
+    return memory_system.get_relevant_memory_context(query, top_k=top_k)

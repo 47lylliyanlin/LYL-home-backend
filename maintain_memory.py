@@ -40,6 +40,8 @@ def maintain_memories(score_threshold: float = 2.0):
         'permanent': 0,
         'dynamic': 0,
         'feel': 0,
+        'plan': 0,
+        'letter': 0,
         'archive': 0
     }
 
@@ -49,6 +51,8 @@ def maintain_memories(score_threshold: float = 2.0):
     print(f"Permanent: {stats['permanent']}")
     print(f"Dynamic: {stats['dynamic']}")
     print(f"Feel: {stats['feel']}")
+    print(f"Plan: {stats['plan']}")
+    print(f"Letter: {stats['letter']}")
     print(f"Archive: {stats['archive']}")
     print(f"Total: {len(all_memories)}")
 

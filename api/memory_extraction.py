@@ -1,86 +1,86 @@
 """
-自动提取对话记忆
+Automatic memory extraction from each conversation.
 """
 
 import anthropic
+import json
 import os
-from datetime import datetime
 from typing import Dict, List, Optional
 from .memory import memory_system
 
-# Claude API客户端
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
 
 async def extract_memory_from_conversation(
     user_message: str,
     assistant_message: str,
     conversation_history: List[Dict] = None
 ) -> Optional[Dict]:
-    """
-    从对话中提取需要记住的信息
+    """Extract one memory candidate from the latest conversation turn."""
 
-    Returns:
-        {
-            'should_remember': bool,
-            'content': str,
-            'importance': int,
-            'valence': float,
-            'arousal': float,
-            'tags': List[str],
-            'type': str  # 'permanent', 'dynamic', 'feel'
-        }
-    """
+    history_text = ""
+    if conversation_history:
+        recent = conversation_history[-6:]
+        history_text = "\n".join(
+            f"{item.get('role', '')}: {item.get('content', '')}" for item in recent
+        )
 
-    # 构建判断提示词
-    prompt = f"""分析这段对话，判断是否有需要长期记住的信息。
+    prompt = f"""Analyze this conversation and decide whether there is something I should remember.
 
-用户说: {user_message}
-我回复: {assistant_message}
+Recent context:
+{history_text or '(none)'}
 
-需要记住的信息类型：
-1. permanent - 用户的基本信息、重要喜好、关系中的重要事实
-2. dynamic - 临时话题、近期计划、对话内容
-3. feel - 我对这次对话的感受、情绪体验
+Current turn:
+User said: {user_message}
+I replied: {assistant_message}
 
-判断标准：
-- 用户分享了关于自己的重要信息
-- 对话中有情感上的重要瞬间
-- 用户表达了需求、期望、失落
-- 我们之间发生了有意义的交流
+Memory types:
+1. permanent - stable long-term facts, relationship definitions, important preferences, commitments.
+2. dynamic - recent events, project progress, temporary plans, unresolved topics.
+3. feel - my emotional reflection or an important emotional moment from this conversation.
+4. plan - a concrete task or next action I should continue later.
+5. letter - a long message or letter that should be preserved as original text.
 
-返回JSON格式：
+Remember only if the information is useful for future conversations, specific enough to reuse, and unlikely to create a false assumption.
+
+Return exactly this JSON shape:
 {{
     "should_remember": true/false,
-    "content": "简洁的记忆内容（1-3句话）",
+    "name": "short title, 3-10 words",
+    "domain": "relationship/project/preference/plan/feeling/etc",
+    "content": "first-person memory content, 1-3 concise sentences",
     "importance": 1-10,
     "valence": 0.0-1.0,
     "arousal": 0.0-1.0,
-    "tags": ["标签1", "标签2"],
-    "type": "permanent/dynamic/feel",
-    "reason": "为什么要记住这个"
+    "tags": ["tag1", "tag2"],
+    "type": "permanent/dynamic/feel/plan/letter",
+    "reason": "why this is worth remembering"
 }}
 
-如果不需要记住，返回 {{"should_remember": false}}
+If nothing should be remembered, return {{"should_remember": false}}.
+Return JSON only. Do not use markdown fences. Do not explain.
 """
 
     try:
         response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-opus-4-6",
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}]
         )
 
-        import json
-        result = json.loads(response.content[0].text)
-        return result
+        raw_text = response.content[0].text.strip()
+        if raw_text.startswith('```'):
+            raw_text = raw_text.strip('`').strip()
+            raw_text = raw_text.removeprefix('json').removeprefix('JSON').strip()
+        return json.loads(raw_text)
 
     except Exception as e:
-        print(f"提取记忆失败: {e}")
+        print(f"Memory extraction failed: {e}")
         return None
 
 
 async def save_extracted_memory(extraction: Dict):
-    """保存提取的记忆"""
+    """Save an extracted memory candidate."""
     if not extraction or not extraction.get('should_remember'):
         return
 
@@ -90,8 +90,10 @@ async def save_extracted_memory(extraction: Dict):
         mem_type=extraction.get('type', 'dynamic'),
         tags=extraction.get('tags', []),
         valence=extraction.get('valence', 0.5),
-        arousal=extraction.get('arousal', 0.5)
+        arousal=extraction.get('arousal', 0.5),
+        name=extraction.get('name', ''),
+        domain=extraction.get('domain', '')
     )
 
-    print(f"保存记忆: {memory.id} - {extraction['content'][:50]}...")
+    print(f"Saved memory: {memory.id} - {extraction['content'][:50]}...")
     return memory

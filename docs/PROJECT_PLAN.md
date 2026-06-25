@@ -253,3 +253,84 @@
 ---
 
 **最后更新：** 2026年6月24日
+
+---
+
+## 2026-06-26 Project Plan Update - Memory System Optimization Complete
+
+### New Completed Phase: Ombre Gateway Memory System
+
+The memory system has moved from simple bucket retrieval toward a two-layer architecture:
+
+```text
+Ombre-Brain layer
+  - buckets
+  - bucket v2 sections
+  - moments
+  - edges
+  - profile documents
+  - profile candidates
+  - Word Map Lite
+  - Dream Light
+  - Darkroom
+
+Ombre Gateway layer
+  - receives normal chat requests
+  - decides what context is needed
+  - injects quiet memory context before the model call
+  - records recent turns
+  - consolidates memory after reply
+  - exposes injection state to Dashboard
+```
+
+### Completed Capabilities
+
+- Gateway-based memory injection for text and voice chat.
+- Quiet memory rules to prevent repeated memory recitation.
+- Wake Context for new windows and restarts.
+- Just Now Context for recent-message questions.
+- Profile portraits and candidate approval workflow.
+- Moment/edge graph foundation and controlled graph diffusion.
+- Word Map Lite as weak concept navigation.
+- Darkroom door state with no public body-reading endpoint.
+- Dream Light relationship weather.
+- Maintenance endpoint and Windows `ob.ps1` menu.
+- Dashboard for visual debugging and manual profile candidate review.
+
+### Current Test Checklist
+
+1. Normal continuity test:
+   - Ask a normal continuity question, for example: what are we working on now?
+   - Expected: answer naturally without reciting memory blocks.
+
+2. Just Now test:
+   - Say a temporary code word in chat.
+   - Ask what the just-mentioned code word was.
+   - Expected: Gateway uses recent chat context; Dashboard shows Just Now on and Scene Memory off.
+
+3. Wake test:
+   - Refresh or open a new window.
+   - Ask who the user is and what the recent work is about.
+   - Expected: uses profile and recent continuity first.
+
+4. Dashboard test:
+   - Open `http://localhost:8000/dashboard/`.
+   - Check Gateway Injection Layers, Memory Seeds, Profile Fact Approval, Dream, Darkroom, Word Map.
+
+5. Maintenance test:
+   - Click full maintenance in Dashboard or run `ob.ps1` option 8.
+   - Expected: Word Map rebuilds, Dream Light runs, Darkroom body remains unread.
+
+### Remaining Future Work
+
+- Improve graph moment generation so older buckets can be split into more precise moments.
+- Add optional scheduled maintenance for nightly Word Map/Dream refresh.
+- Improve Word Map concept filtering for mixed Chinese/English text.
+- Add safer export/import flow for memory data.
+- Move hardcoded service credentials into environment variables before public deployment.
+- Add authentication before exposing Dashboard outside localhost.
+
+### Updated Status
+
+Memory system optimization is now functionally complete for local testing. The next project phase should focus on testing behavior quality, deployment hardening, and privacy/security review before any public server exposure.
+
