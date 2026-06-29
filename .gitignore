@@ -32,3 +32,10 @@ audio/output/*
 
 # ChromaDB向量数据库
 chroma_db/
+# Local memory/runtime data
+memory/
+runtime/
+
+# Local scratch docs
+.encoding_test.txt
+docs/.encoding_test.txt

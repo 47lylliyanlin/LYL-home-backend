@@ -769,3 +769,65 @@ It shows memory counts, Gateway injection layers, direct seeds, wake anchors, di
 - Word Map Lite is a weak navigation signal and must not be treated as factual evidence.
 - Profile facts are semi-automatic: they should be approved before becoming confirmed portrait content.
 
+
+---
+
+## 2026年6月30日补充：Gateway、Session 与模型路由
+
+### 聊天接口新增字段
+
+`POST /api/chat` 现在除了 `message` 外，还支持：
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| session_id | string | default | 当前聊天窗口编号，用来读取同一窗口的短期上下文 |
+| recent_turns_count | number | 4 | 最近带入模型的对话轮数，1轮约等于 user + assistant |
+| recent_char_limit | number | 180 | 每条历史消息带入模型前的字符截断上限 |
+
+### 语音接口新增字段
+
+`POST /api/voice-chat` 现在也支持表单字段：
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| session_id | string | default | 当前语音聊天窗口编号 |
+| recent_turns_count | number | 4 | 最近上下文轮数 |
+| recent_char_limit | number | 180 | 单条历史消息字符上限 |
+
+### Gateway 注入状态接口
+
+`GET /api/gateway/last-context` 用于查看上一轮模型调用前 Gateway 注入了哪些内容。重点字段：
+
+| 字段 | 说明 |
+|------|------|
+| is_new_session | 当前 session 是否首次出现 |
+| message_history_count | 当前 session 带入了多少条历史消息 |
+| profile_context_used | 是否注入完整 Profile Wake。当前默认不注入完整 Profile Wake |
+| wake_context | 新 session 使用的轻量 Wake Anchors |
+| previous_session_used | 新 session 是否带入上一个 session 的最近上下文 |
+| previous_session_source | `previous_session` 或 `recent_continuity` |
+| scene_context | 本轮直接召回的长期记忆 bucket |
+| diffused_context | 从直接命中记忆沿图结构扩散出的低置信背景 |
+| word_map_prompt_injection | 当前为 false，Word Map 不进入聊天 prompt |
+| prompt_preview | 最终 system prompt 预览 |
+
+### AI 路由配置接口
+
+`GET /api/ai/config` 返回当前启用的模型路由，不暴露 API Key。
+
+当前支持 profile 形式：
+
+| Profile | Provider | 说明 |
+|---------|----------|------|
+| CLAUDE | anthropic | Claude 官方或 Anthropic 兼容接口 |
+| GPT | openai / openai_compatible | OpenAI 官方或中转 |
+| GEMINI | gemini_native / openai_compatible | Gemini 官方 native 或中转 |
+| GLM | anthropic | BigModel Anthropic-compatible 接口 |
+
+### 当前上下文规则
+
+- 同一个 session：主要使用 session messages 保持短期连续。
+- 新 session 第一轮：使用 Wake Anchors，并优先附带上一个 session 的最近 2 轮。
+- 如果没有上一个 session：使用 `recent_continuity` 作为兜底。
+- 完整 Profile Wake 不再默认进入聊天 prompt，只保留给 Dashboard、调试和后续手动查询。
+- Word Map 当前不进入 prompt，只作为 Dashboard 和未来检索辅助。

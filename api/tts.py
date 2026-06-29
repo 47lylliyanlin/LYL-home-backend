@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
-load_dotenv(BACKEND_DIR / ".env")
+load_dotenv(BACKEND_DIR / ".env", override=True)
 
 OUTPUT_DIR = "audio/output"
 ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1/text-to-speech"

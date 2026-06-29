@@ -2,13 +2,10 @@
 Automatic memory extraction from each conversation.
 """
 
-import anthropic
 import json
-import os
 from typing import Dict, List, Optional
 from .memory import memory_system
-
-client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+from .ai_client import json_completion
 
 
 async def extract_memory_from_conversation(
@@ -62,17 +59,11 @@ Return JSON only. Do not use markdown fences. Do not explain.
 """
 
     try:
-        response = client.messages.create(
-            model="claude-opus-4-6",
+        return json_completion(
+            system_prompt="Return valid JSON only. Do not use markdown fences.",
+            user_message=prompt,
             max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}]
         )
-
-        raw_text = response.content[0].text.strip()
-        if raw_text.startswith('```'):
-            raw_text = raw_text.strip('`').strip()
-            raw_text = raw_text.removeprefix('json').removeprefix('JSON').strip()
-        return json.loads(raw_text)
 
     except Exception as e:
         print(f"Memory extraction failed: {e}")

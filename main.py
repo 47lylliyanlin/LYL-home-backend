@@ -1,9 +1,8 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import anthropic
 import uvicorn
 from api.stt import transcribe_audio
 from api.tts import text_to_speech
@@ -15,6 +14,7 @@ from api.word_map import load_word_map, rebuild_word_map
 from api.darkroom import darkroom_status, enter_darkroom_note
 from api.dream import dream_light_status, run_dream_light, run_memory_maintenance
 from api.pulse import introspection_status, pulse_status
+from api.ai_client import active_ai_config, chat_completion, chat_messages
 import os
 from pathlib import Path
 from typing import List
@@ -35,12 +35,6 @@ app.mount("/audio/output", StaticFiles(directory="audio/output"), name="audio_ou
 app.mount("/audio/input", StaticFiles(directory="audio/input"), name="audio_input")
 app.mount("/dashboard", StaticFiles(directory="dashboard", html=True), name="dashboard")
 
-# Claude API client. Configure with environment variables.
-claude_client = anthropic.Anthropic(
-    api_key=os.getenv("ANTHROPIC_API_KEY", ""),
-    base_url=os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
-)
-
 print("Checking memory system...")
 memory_context_preview = get_memory_summary()
 print(f"Memory system ready, startup preview length={len(memory_context_preview)}")
@@ -48,6 +42,9 @@ print(f"Memory system ready, startup preview length={len(memory_context_preview)
 
 class ChatRequest(BaseModel):
     message: str
+    session_id: str = "default"
+    recent_turns_count: int = 4
+    recent_char_limit: int = 180
 
 
 class ProfileCandidateRequest(BaseModel):
@@ -196,28 +193,163 @@ def get_introspection_status():
     return introspection_status()
 
 
+@app.get("/api/ai/config")
+def get_ai_config():
+    """Return active AI routing config without exposing API keys."""
+    return active_ai_config()
+
+
+
+
+def _between_markers(text: str, start_marker: str, end_marker: str) -> str:
+    start = text.find(start_marker)
+    if start < 0:
+        return ""
+    start += len(start_marker)
+    end = text.find(end_marker, start)
+    if end < 0:
+        end = len(text)
+    return text[start:end].strip()
+
+
+def _format_bilingual_reply(english: str, chinese: str) -> str:
+    english = (english or "").strip()
+    chinese = (chinese or "").strip()
+    if english and chinese:
+        return f"{english}\n{chinese}"
+    return english or chinese
+
+def _split_paragraphs(text: str) -> list[str]:
+    return [part.strip() for part in (text or "").split("\n") if part.strip()]
+
+
+def _bilingual_parts(english: str, chinese: str) -> list[dict]:
+    english_parts = _split_paragraphs(english)
+    chinese_parts = _split_paragraphs(chinese)
+    total = max(len(english_parts), len(chinese_parts))
+    parts = []
+    for index in range(total):
+        parts.append({
+            "english": english_parts[index] if index < len(english_parts) else "",
+            "chinese": chinese_parts[index] if index < len(chinese_parts) else "",
+        })
+    return parts
+
+
+def _contains_cjk(text: str) -> bool:
+    return any("\u4e00" <= char <= "\u9fff" for char in text or "")
+
+
+def _looks_like_english(text: str) -> bool:
+    stripped = (text or "").strip()
+    if not stripped:
+        return False
+    cjk = sum("\u4e00" <= char <= "\u9fff" for char in stripped)
+    ascii_letters = sum(("a" <= char.lower() <= "z") for char in stripped)
+    return ascii_letters > 0 and cjk == 0
+
+
+def _parse_marked_bilingual(text: str) -> dict:
+    return {
+        "english": _between_markers(text, "<<<ENGLISH>>>", "<<<CHINESE>>>"),
+        "chinese": _between_markers(text, "<<<CHINESE>>>", "<<<END>>>"),
+    }
+
+
+def _repair_bilingual_reply(raw_reply: str) -> dict:
+    repair_prompt = f"""Convert the following Kiro reply into bilingual display text.
+
+Rules:
+- Keep the meaning, warmth, and emotional nuance.
+- The English line must be natural conversational English and contain no Chinese characters.
+- The Chinese line must be natural Simplified Chinese.
+- Break longer replies into matching short subtitle units: each English unit on its own line, and the corresponding Chinese unit on the same line number.
+- Return exactly this marker format, with no extra text:
+<<<ENGLISH>>>
+English text here
+<<<CHINESE>>>
+Chinese translation here
+<<<END>>>
+
+Original reply:
+{raw_reply}
+"""
+    repaired = chat_completion(
+        system_prompt="You convert replies into bilingual marker format. Follow the requested markers exactly.",
+        user_message=repair_prompt,
+        max_tokens=512,
+    )
+    return _parse_marked_bilingual(repaired)
+
+
+def generate_bilingual_reply(system_prompt: str, user_message: str, messages: List[dict] = None) -> dict:
+    """Generate an English voice line plus a Chinese translation for display."""
+    bilingual_system_prompt = f"""{system_prompt}
+
+Output format override:
+- Reply naturally as Kiro, preserving the personality and memory guidance above.
+- The spoken reply must be English only and contain no Chinese characters.
+- Also provide a faithful, natural Simplified Chinese translation for display.
+- Break longer replies into matching short subtitle units: each English unit on its own line, and the corresponding Chinese unit on the same line number.
+- Return exactly this marker format, with no JSON and no markdown:
+<<<ENGLISH>>>
+English text here
+<<<CHINESE>>>
+Chinese translation here
+<<<END>>>
+"""
+    raw_reply = chat_messages(
+        system_prompt=bilingual_system_prompt,
+        messages=messages or [{"role": "user", "content": user_message}],
+        max_tokens=1024,
+    )
+
+    parsed = _parse_marked_bilingual(raw_reply)
+    english = parsed["english"]
+    chinese = parsed["chinese"]
+
+    if not _looks_like_english(english) or not chinese:
+        repaired = _repair_bilingual_reply(raw_reply)
+        english = repaired["english"] or english
+        chinese = repaired["chinese"] or chinese
+
+    if not chinese and _contains_cjk(raw_reply):
+        chinese = raw_reply.strip()
+
+    display_text = _format_bilingual_reply(english, chinese)
+    return {
+        "english": english or display_text,
+        "chinese": chinese,
+        "display": display_text,
+        "parts": _bilingual_parts(english, chinese),
+    }
+
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
     """Text chat through Ombre Gateway."""
     try:
-        prepared = prepare_chat_turn(request.message)
-
-        response = claude_client.messages.create(
-            model="claude-opus-4-6",
-            max_tokens=1024,
-            system=prepared.system_prompt,
-            messages=[
-                {"role": "user", "content": request.message}
-            ]
+        prepared = prepare_chat_turn(
+            request.message,
+            session_id=request.session_id,
+            recent_turns_count=request.recent_turns_count,
+            recent_char_limit=request.recent_char_limit,
         )
 
-        reply_text = ""
-        for block in response.content:
-            if hasattr(block, 'text'):
-                reply_text += block.text
+        chinese_system_prompt = f"""{prepared.system_prompt}
+
+Output language override:
+- Reply in Simplified Chinese only.
+- Do not include English unless the user explicitly asks for English wording.
+- Keep Kiro's warmth, memory, and natural tone.
+"""
+        reply_text = chat_messages(
+            system_prompt=chinese_system_prompt,
+            messages=prepared.messages,
+            max_tokens=1024,
+        )
 
         try:
-            await consolidate_chat_turn(request.message, reply_text)
+            await consolidate_chat_turn(request.message, reply_text, session_id=request.session_id)
         except Exception as mem_error:
             print(f"Memory consolidation failed: {mem_error}")
 
@@ -241,7 +373,12 @@ async def tts(request: ChatRequest):
 
 
 @app.post("/api/voice-chat")
-async def voice_chat(audio: UploadFile = File(...)):
+async def voice_chat(
+    audio: UploadFile = File(...),
+    session_id: str = Form("default"),
+    recent_turns_count: int = Form(4),
+    recent_char_limit: int = Form(180),
+):
     """Voice chat: receive audio, return text and audio reply."""
     try:
         import time
@@ -255,26 +392,21 @@ async def voice_chat(audio: UploadFile = File(...)):
             f.write(content)
 
         user_text = transcribe_audio(audio_path)
-        prepared = prepare_chat_turn(user_text)
-
-        response = claude_client.messages.create(
-            model="claude-opus-4-6",
-            max_tokens=1024,
-            system=prepared.system_prompt,
-            messages=[
-                {"role": "user", "content": user_text}
-            ]
+        prepared = prepare_chat_turn(
+            user_text,
+            session_id=session_id,
+            recent_turns_count=recent_turns_count,
+            recent_char_limit=recent_char_limit,
         )
 
-        assistant_text = ""
-        for block in response.content:
-            if hasattr(block, 'text'):
-                assistant_text += block.text
+        reply = generate_bilingual_reply(prepared.system_prompt, user_text, prepared.messages)
+        assistant_text = reply["display"]
+        assistant_audio_text = reply["english"]
 
-        audio_output_path = await text_to_speech(assistant_text)
+        audio_output_path = await text_to_speech(assistant_audio_text)
 
         try:
-            await consolidate_chat_turn(user_text, assistant_text)
+            await consolidate_chat_turn(user_text, assistant_text, session_id=session_id)
         except Exception as mem_error:
             print(f"Memory consolidation failed: {mem_error}")
 
@@ -282,6 +414,10 @@ async def voice_chat(audio: UploadFile = File(...)):
             "user_audio_url": f"/audio/input/{audio_filename}",
             "user_text": user_text,
             "assistant_text": assistant_text,
+            "assistant_text_en": reply["english"],
+            "assistant_text_zh": reply["chinese"],
+            "assistant_audio_text": assistant_audio_text,
+            "assistant_text_parts": reply["parts"],
             "assistant_audio_url": f"/audio/output/{os.path.basename(audio_output_path)}"
         }
 

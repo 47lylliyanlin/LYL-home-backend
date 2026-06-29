@@ -923,3 +923,57 @@ Upgrade the simplified memory search system into a more complete Ombre-Brain-ins
 
 Runtime memory files, Darkroom note bodies, and recent chat runtime state should be treated as local data. Code and documentation can be pushed to GitHub, but private runtime data should not be pushed unless intentionally exporting memories.
 
+
+---
+
+## 📅 2026年6月30日 - Gateway 连续性与模型路由优化
+
+### 1. Session 短期上下文
+
+本轮增加了 `session_id` 机制。前端会为每个聊天窗口保存一个 session 编号，后端按 session 保存最近消息。这样同一窗口的连续聊天不再依赖完整 Profile Wake，而是使用最近几轮原始对话作为短期上下文。
+
+当前默认配置：
+
+- 最近上下文轮数：4轮
+- 单条历史消息字符上限：180字符
+- 新对话按钮会生成新的 session
+
+### 2. 新 session 接续规则
+
+新 session 第一轮不再注入完整 Profile Wake。现在的接续顺序是：
+
+1. Wake Anchors：从长期记忆里挑出的轻量身份/关系/偏好锚点。
+2. Previous Session Context：上一个 session 的最近 2 轮。
+3. 如果没有上一个 session，才使用 recent_continuity 兜底。
+
+这样可以减少新窗口启动时的 token 消耗，也避免完整画像和最近快照重复注入。
+
+### 3. Profile Wake 调整
+
+完整 Profile Wake 仍然保留在 `memory/profile`，但不再默认进入普通聊天 prompt。它当前主要用于：
+
+- Dashboard 查看
+- 调试
+- 后续手动查询身份/关系画像
+- 未来生成更稳定的 Wake Anchors
+
+### 4. Word Map 与 Memory Rules
+
+Word Map 当前不进入聊天 prompt，只保留为 Dashboard 展示和未来检索辅助。
+
+Memory-use rules 默认关闭，避免每轮固定消耗规则 token。后续如果再次出现大量复述记忆，可以开启极简规则。
+
+### 5. 多模型路由
+
+新增统一 AI client，支持：
+
+- Claude / Anthropic-compatible
+- GPT / OpenAI-compatible
+- Gemini native
+- GLM / BigModel Anthropic-compatible
+
+新增 `/api/ai/config` 用于检查当前启用模型，不暴露真实密钥。
+
+### 6. 当前测试反馈
+
+测试中发现同一 session 内，如果上一轮 assistant 回复包含大量动作描写，下一轮语义接近时模型可能复用上一段表达模板。当前暂不改 assistant 历史清洗，后续可考虑只对传入模型的 assistant 历史做轻量压缩，不影响完整聊天记录保存。

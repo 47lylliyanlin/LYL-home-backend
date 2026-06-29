@@ -115,6 +115,7 @@
     <div class="grid">
       <section class="span-3"><h2>Memory Counts</h2><div id="counts"></div></section>
       <section class="span-3"><h2>Gateway</h2><div id="gateway"></div></section>
+      <section class="span-3"><h2>AI Routing</h2><div id="aiConfig"></div></section>
       <section class="span-3"><h2>Dream / Weather</h2><div id="dream"></div></section>
       <section class="span-3"><h2>Darkroom Door</h2><div id="darkroom"></div></section>
       <section class="span-6"><h2>Word Map Top Concepts</h2><div class="list" id="concepts"></div></section>
@@ -218,10 +219,11 @@
 
     async function load() {
       $('status').textContent = '读取中...';
-      const [pulse, profile, candidates, last] = await Promise.all([
+      const [pulse, profile, candidates, aiConfig, last] = await Promise.all([
         api('/api/pulse'),
         api('/api/profile'),
         api('/api/profile/candidates').catch(() => ({ candidates: [] })),
+        api('/api/ai/config').catch(() => ({})),
         api('/api/gateway/last-context').catch(() => ({})),
       ]);
 
@@ -236,6 +238,13 @@
         metric('detail recall', yn(g.detail_recall_used)),
         metric('scene count', g.scene_count),
         metric('wake count', g.wake_count),
+      ].join('');
+      $('aiConfig').innerHTML = [
+        metric('profile', aiConfig.profile || ''),
+        metric('provider', aiConfig.provider || ''),
+        metric('model', aiConfig.model || ''),
+        metric('base url', aiConfig.base_url || ''),
+        metric('has key', yn(aiConfig.has_api_key)),
       ].join('');
       const d = pulse.dream_light || {};
       $('dream').innerHTML = [
