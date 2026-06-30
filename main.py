@@ -15,16 +15,20 @@ from api.darkroom import darkroom_status, enter_darkroom_note
 from api.dream import dream_light_status, run_dream_light, run_memory_maintenance
 from api.pulse import introspection_status, pulse_status
 from api.ai_client import active_ai_config, chat_completion, chat_messages
+from api.security import admin_auth_middleware, cors_origins
 import os
 from pathlib import Path
 from typing import List
 
 app = FastAPI()
 
-# CORS support for the local frontend.
+# Protect Dashboard and administrative/debug endpoints when KIRO_ADMIN_TOKEN is set.
+app.middleware("http")(admin_auth_middleware)
+
+# CORS support for the frontend. Set KIRO_CORS_ORIGINS for cloud deployments.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

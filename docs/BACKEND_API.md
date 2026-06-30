@@ -831,3 +831,19 @@ It shows memory counts, Gateway injection layers, direct seeds, wake anchors, di
 - 如果没有上一个 session：使用 `recent_continuity` 作为兜底。
 - 完整 Profile Wake 不再默认进入聊天 prompt，只保留给 Dashboard、调试和后续手动查询。
 - Word Map 当前不进入 prompt，只作为 Dashboard 和未来检索辅助。
+
+---
+
+## 2026-06-30 Cloud Security API Rules
+
+When `KIRO_ADMIN_TOKEN` is set, Dashboard and administrative/debug endpoints require this header:
+
+```text
+X-Kiro-Admin-Token: your_admin_token
+```
+
+Protected areas include Dashboard, Gateway debug context, profile review, memory inspection, Darkroom, Dream, maintenance, Pulse, introspection, and AI routing config.
+
+Chat entrypoints `/api/chat`, `/api/voice-chat`, and `/api/tts` remain available to the frontend for now. In the multi-user phase, replace this with account-based authentication.
+
+Use `KIRO_CORS_ORIGINS` to restrict allowed frontend origins. Do not keep `*` for a public cloud deployment.
