@@ -4,6 +4,7 @@ Kiro???? - ??Ombre-Brain??
 """
 
 import math
+import os
 import re
 import yaml
 import chromadb
@@ -16,12 +17,33 @@ from .bucket_format import direct_seed_text
 MEMORY_DIR = "./memory"
 CHROMA_DIR = "./chroma_db"
 
+STOP_TOKEN_CODES = {
+    0x6211, 0x4f60, 0x4ed6, 0x5979, 0x5b83, 0x4eec, 0x7684, 0x4e86,
+    0x662f, 0x5728, 0x6709, 0x548c, 0x5417, 0x5462, 0x554a, 0x5440,
+    0x5427, 0x4e48, 0x4ec0, 0x8fd9, 0x90a3, 0x5c31, 0x90fd, 0x8fd8,
+    0x8981, 0x4f1a, 0x80fd, 0x4e0d, 0x5f88, 0x4e5f, 0x53c8, 0x7ed9,
+    0x8bf4, 0x95ee, 0x521a, 0x624d, 0x4e0a, 0x4e00, 0x53e5, 0x524d,
+    0x540e, 0x91cc, 0x5230, 0x53bb, 0x6765, 0x505a, 0x770b, 0x60f3,
+    0x77e5, 0x9053, 0x8bb0, 0x5f97, 0x8c01, 0x54ea, 0x4e2a, 0x4e3a,
+    0x628a, 0x88ab, 0x4e0e, 0x6216,
+}
+STOP_TOKENS = {chr(code) for code in STOP_TOKEN_CODES}
+
+
 # ???ChromaDB
 chroma_client = chromadb.PersistentClient(path=CHROMA_DIR)
 memory_collection = chroma_client.get_or_create_collection(
     name="kiro_memories",
     metadata={"hnsw:space": "cosine"}
 )
+
+
+def _env_float(name: str, default: float, min_value: float, max_value: float) -> float:
+    try:
+        value = float(os.getenv(name, str(default)))
+    except ValueError:
+        value = default
+    return min(max(value, min_value), max_value)
 
 
 class Memory:
@@ -196,8 +218,29 @@ class MemorySystem:
     def _tokenize(self, text: str) -> List[str]:
         return re.findall(r"[\u4e00-\u9fff]|[A-Za-z0-9_]+", text.lower())
 
+    def _query_terms(self, query: str) -> List[str]:
+        tokens = [token for token in self._tokenize(query) if token not in STOP_TOKENS]
+        cjk = [token for token in tokens if re.fullmatch(r"[\u4e00-\u9fff]", token)]
+        latin = [token for token in tokens if not re.fullmatch(r"[\u4e00-\u9fff]", token)]
+
+        terms = list(latin)
+        if len(cjk) == 1:
+            terms.append(cjk[0])
+        elif len(cjk) >= 2:
+            joined = "".join(cjk)
+            terms.append(joined)
+            terms.extend(joined[index:index + 2] for index in range(len(joined) - 1))
+
+        seen = set()
+        result = []
+        for term in terms:
+            if term and term not in seen:
+                seen.add(term)
+                result.append(term)
+        return result
+
     def _keyword_score(self, query: str, memory: Memory) -> float:
-        query_tokens = self._tokenize(query)
+        query_tokens = self._query_terms(query)
         if not query_tokens:
             return 0.0
 
@@ -229,6 +272,17 @@ class MemorySystem:
         except Exception as e:
             print(f"??????: {e}")
             return {}
+
+    def _search_base_score(self, memory: Memory) -> float:
+        return min(memory.calculate_score(), 10.0)
+
+    def _passes_direct_relevance(self, keyword: float, vector: float) -> bool:
+        vector_threshold = _env_float("MEMORY_DIRECT_VECTOR_THRESHOLD", 8.0, 0.0, 10.0)
+        return keyword > 0 or vector >= vector_threshold
+
+    def _combined_search_score(self, keyword: float, vector: float, base: float) -> float:
+        base_weight = _env_float("MEMORY_SEARCH_BASE_WEIGHT", 0.25, 0.0, 1.0)
+        return (keyword * 2.0) + (vector * 1.5) + (base * base_weight)
 
     def search_memories(
         self,
@@ -262,8 +316,10 @@ class MemorySystem:
         for memory in candidates:
             keyword = self._keyword_score(query, memory)
             vector = vector_scores.get(memory.id, 0.0)
-            decay = memory.calculate_score()
-            final_score = (keyword * 2.0) + (vector * 1.5) + decay
+            base = self._search_base_score(memory)
+            if not self._passes_direct_relevance(keyword, vector):
+                continue
+            final_score = self._combined_search_score(keyword, vector, base)
             scored.append((final_score, memory))
 
         scored.sort(key=lambda item: item[0], reverse=True)
@@ -309,14 +365,18 @@ class MemorySystem:
         for memory in candidates:
             keyword = self._keyword_score(query, memory)
             vector = vector_scores.get(memory.id, 0.0)
-            base = memory.calculate_score()
-            final_score = (keyword * 2.0) + (vector * 1.5) + base
+            base = self._search_base_score(memory)
+            relevance_passed = self._passes_direct_relevance(keyword, vector)
+            if not relevance_passed:
+                continue
+            final_score = self._combined_search_score(keyword, vector, base)
             explained.append({
                 "memory": memory,
                 "keyword_score": round(keyword, 3),
                 "vector_score": round(vector, 3),
                 "base_score": round(base, 3),
                 "final_score": round(final_score, 3),
+                "relevance_passed": relevance_passed,
                 "importance": memory.importance,
                 "use_count": memory.use_count,
                 "pinned": memory.pinned,

@@ -145,6 +145,7 @@ def _memory_explanation_ref(item: Dict) -> Dict:
         "vector_score": item.get("vector_score"),
         "base_score": item.get("base_score"),
         "final_score": item.get("final_score"),
+        "relevance_passed": item.get("relevance_passed"),
     }
 
 def _dedupe_memories(memories: List[Memory]) -> List[Memory]:
