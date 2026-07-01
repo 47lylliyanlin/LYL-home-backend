@@ -56,6 +56,7 @@ function Show-Menu {
     Write-Host '4. Health check / Pulse'
     Write-Host '5. Backup memory'
     Write-Host '6. Rebuild Word Map'
+    Write-Host '6v. Rebuild Vector Index'
     Write-Host '7. Run Dream Light'
     Write-Host '8. Run full maintenance'
     Write-Host '9. Bucket v2 migration dry-run'
@@ -72,6 +73,7 @@ while ($true) {
         '4' { Health-Check }
         '5' { Backup-Memory }
         '6' { Invoke-ApiPost '/api/memory/word-map/rebuild' }
+        '6v' { Invoke-ApiPost '/api/memory/vector/rebuild' }
         '7' { Invoke-ApiPost '/api/dream/light/run' }
         '8' { Invoke-ApiPost '/api/maintenance/run' }
         '9' { & $Python (Join-Path $Root 'tools\migrate_buckets_v2.py') }

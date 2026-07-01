@@ -293,6 +293,7 @@
     $('refreshBtn').onclick = () => load().catch(err => $('status').textContent = err.message);
     $('dreamBtn').onclick = async () => { await api('/api/dream/light/run', { method: 'POST' }); await load(); };
     $('wordMapBtn').onclick = async () => { await api('/api/memory/word-map/rebuild', { method: 'POST' }); await load(); };
+    $('vectorBtn').onclick = async () => { await api('/api/memory/vector/rebuild', { method: 'POST' }); await load(); };
     $('maintenanceBtn').onclick = async () => { await api('/api/maintenance/run', { method: 'POST' }); await load(); };
     load().catch(err => $('status').textContent = err.message);
   </script>

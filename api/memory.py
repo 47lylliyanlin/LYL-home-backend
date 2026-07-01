@@ -502,6 +502,46 @@ class MemorySystem:
 memory_system = MemorySystem()
 
 
+def rebuild_vector_index(include_archive: bool = False) -> Dict[str, Any]:
+    """Rebuild ChromaDB vectors from current memory bucket files."""
+    existing = memory_collection.get()
+    existing_ids = existing.get('ids', []) or []
+    if existing_ids:
+        memory_collection.delete(ids=existing_ids)
+
+    memories = memory_system.load_all_memories(include_archive=include_archive)
+    upserted = 0
+    skipped = 0
+    for memory in memories:
+        if memory.type == 'archive' and not include_archive:
+            skipped += 1
+            continue
+        try:
+            memory_collection.upsert(
+                ids=[memory.id],
+                documents=[direct_seed_text(memory.content)],
+                metadatas=[{
+                    'importance': memory.importance,
+                    'type': memory.type,
+                    'domain': memory.domain,
+                    'tags': ','.join(memory.tags),
+                }],
+            )
+            upserted += 1
+        except Exception as exc:
+            print(f"Vector rebuild failed for {memory.id}: {exc}")
+            skipped += 1
+
+    current_ids = memory_collection.get().get('ids', []) or []
+    return {
+        'deleted_old_vectors': len(existing_ids),
+        'upserted_current_memories': upserted,
+        'skipped': skipped,
+        'current_vector_ids': len(current_ids),
+        'include_archive': include_archive,
+    }
+
+
 def get_memory_summary() -> str:
     """?????????????????"""
     memories = memory_system.load_all_memories()

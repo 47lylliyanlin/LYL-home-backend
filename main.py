@@ -6,7 +6,7 @@ from pydantic import BaseModel
 import uvicorn
 from api.stt import transcribe_audio
 from api.tts import text_to_speech
-from api.memory import get_memory_summary
+from api.memory import get_memory_summary, rebuild_vector_index
 from api.gateway import prepare_chat_turn, consolidate_chat_turn, get_last_injected_context
 from api.profile import profile_manager
 from api.memory_graph import graph_status
@@ -145,6 +145,12 @@ def get_word_map():
 def rebuild_word_map_endpoint():
     """Rebuild Word Map Lite from current buckets and moments."""
     return rebuild_word_map()
+
+
+@app.post("/api/memory/vector/rebuild")
+def rebuild_vector_index_endpoint():
+    """Rebuild ChromaDB vectors from active memory buckets."""
+    return rebuild_vector_index(include_archive=False)
 
 
 

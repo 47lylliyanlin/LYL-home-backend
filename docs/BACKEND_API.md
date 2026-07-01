@@ -744,6 +744,7 @@ Client
 | GET | `/api/memory/graph/status` | Returns moment/edge graph counts. |
 | GET | `/api/memory/word-map` | Reads Word Map Lite. This is observational, not evidence. |
 | POST | `/api/memory/word-map/rebuild` | Rebuilds Word Map Lite from buckets and moments. |
+| POST | `/api/memory/vector/rebuild` | Rebuilds ChromaDB vectors from active, non-archived memory buckets. |
 | GET | `/api/darkroom/status` | Returns Darkroom door state only. Note bodies are never exposed. |
 | POST | `/api/darkroom/enter` | Writes a private Darkroom note and returns metadata only. |
 | GET | `/api/dream/light/status` | Reads Dream Light state and relationship weather. |
@@ -758,7 +759,7 @@ Dashboard is mounted at:
 http://localhost:8000/dashboard/
 ```
 
-It shows memory counts, Gateway injection layers, direct seeds, wake anchors, diffused memories, Word Map hints, profile candidates, Dream Light, Darkroom door state, and raw pulse data. It also provides buttons for Dream Light, Word Map rebuild, and full maintenance.
+It shows memory counts, Gateway injection layers, direct seeds, wake anchors, diffused memories, Word Map hints, profile candidates, Dream Light, Darkroom door state, and raw pulse data. It also provides buttons for Dream Light, Word Map rebuild, Vector Index rebuild, and full maintenance.
 
 ### Important Behavior Rules
 

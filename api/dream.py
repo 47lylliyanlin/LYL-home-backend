@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, List
 
 from .darkroom import darkroom_status
-from .memory import memory_system
+from .memory import memory_system, rebuild_vector_index
 from .memory_graph import graph_status
 from .profile import profile_manager
 from .word_map import load_word_map, rebuild_word_map
@@ -148,6 +148,7 @@ def relationship_weather_context() -> str:
 
 def run_memory_maintenance() -> Dict:
     """Run safe maintenance surfaces without exposing Darkroom note bodies."""
+    vector = rebuild_vector_index(include_archive=False)
     word_map = rebuild_word_map()
     dream = run_dream_light()
     graph = graph_status()
@@ -155,10 +156,12 @@ def run_memory_maintenance() -> Dict:
     return {
         "ran_at": datetime.now().isoformat(),
         "tasks": {
+            "vector_index_rebuilt": True,
             "word_map_rebuilt": True,
             "dream_light_ran": True,
             "darkroom_body_read": False,
         },
+        "vector_index": vector,
         "word_map": {
             "generated_at": word_map.get("generated_at"),
             "node_count": word_map.get("node_count"),
