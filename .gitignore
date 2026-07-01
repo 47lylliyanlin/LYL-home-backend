@@ -39,3 +39,6 @@ runtime/
 # Local scratch docs
 .encoding_test.txt
 docs/.encoding_test.txt
+
+# Local backup archives
+backups/
