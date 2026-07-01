@@ -1,4 +1,4 @@
-"""
+﻿"""
 Kiro???? - ??Ombre-Brain??
 ????????????????????????
 """
@@ -278,6 +278,53 @@ class MemorySystem:
 
         return found_memories
 
+    def explain_search_memories(
+        self,
+        query: str,
+        top_k: int = 5,
+        include_feel: bool = False,
+        include_archive: bool = False,
+        domain: str = "",
+        tags: List[str] = None,
+        importance_min: int = -1,
+    ) -> List[Dict[str, Any]]:
+        """Return search results with scoring details without touching memory files."""
+        tags = tags or []
+        all_memories = self.load_all_memories(include_archive=include_archive)
+        candidates = []
+
+        for memory in all_memories:
+            if memory.type in ('feel', 'plan', 'letter') and not include_feel:
+                continue
+            if domain and memory.domain != domain and memory.type != domain:
+                continue
+            if tags and not set(tags).intersection(set(memory.tags)):
+                continue
+            if importance_min >= 1 and memory.importance < importance_min:
+                continue
+            candidates.append(memory)
+
+        vector_scores = self._vector_scores(query, max(top_k * 4, 10)) if query else {}
+        explained = []
+        for memory in candidates:
+            keyword = self._keyword_score(query, memory)
+            vector = vector_scores.get(memory.id, 0.0)
+            base = memory.calculate_score()
+            final_score = (keyword * 2.0) + (vector * 1.5) + base
+            explained.append({
+                "memory": memory,
+                "keyword_score": round(keyword, 3),
+                "vector_score": round(vector, 3),
+                "base_score": round(base, 3),
+                "final_score": round(final_score, 3),
+                "importance": memory.importance,
+                "use_count": memory.use_count,
+                "pinned": memory.pinned,
+                "type": memory.type,
+            })
+
+        explained.sort(key=lambda item: item["final_score"], reverse=True)
+        return explained[:top_k]
     def save_memory(self, memory: Memory) -> bool:
         try:
             file_path = Path(memory.file_path) if memory.file_path else self._path_for_new_memory(memory)
@@ -406,3 +453,4 @@ def get_memory_summary() -> str:
 def get_relevant_memory_summary(query: str, top_k: int = 6) -> str:
     """???????????"""
     return memory_system.get_relevant_memory_context(query, top_k=top_k)
+

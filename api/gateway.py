@@ -127,6 +127,26 @@ def _memory_ref(memory: Memory, source: str) -> Dict:
     }
 
 
+
+
+def _memory_explanation_ref(item: Dict) -> Dict:
+    memory = item.get("memory")
+    if not memory:
+        return {}
+    return {
+        "id": memory.id,
+        "title": _memory_title(memory),
+        "type": memory.type,
+        "tags": memory.tags,
+        "importance": item.get("importance"),
+        "use_count": item.get("use_count"),
+        "pinned": item.get("pinned"),
+        "keyword_score": item.get("keyword_score"),
+        "vector_score": item.get("vector_score"),
+        "base_score": item.get("base_score"),
+        "final_score": item.get("final_score"),
+    }
+
 def _dedupe_memories(memories: List[Memory]) -> List[Memory]:
     seen = set()
     result = []
@@ -329,6 +349,15 @@ def prepare_chat_turn(
     just_now_triggered = needs_just_now_context(user_message)
     just_now_turns = session_turns if (just_now_triggered or detail_requested) else []
     scene_memories = [] if (just_now_turns or detail_requested) else build_scene_memories(user_message, exclude_ids=wake_ids)
+    scene_explanations = []
+    if scene_memories:
+        scene_ids = {memory.id for memory in scene_memories}
+        explained = memory_system.explain_search_memories(user_message, top_k=max(10, len(scene_ids) + len(wake_ids)))
+        scene_explanations = [
+            _memory_explanation_ref(item)
+            for item in explained
+            if item.get("memory") and item["memory"].id in scene_ids
+        ]
 
     profile_context = "(none)"
     weather_context = relationship_weather_context() if is_new_session else "(none)"
@@ -394,6 +423,7 @@ def prepare_chat_turn(
         "just_now_used": bool(just_now_turns),
         "just_now_count": len(just_now_turns),
         "scene_context": [_memory_ref(memory, "scene") for memory in scene_memories],
+        "scene_explanations": scene_explanations,
         "diffused_context": diffused_memories,
         "word_map_hints": word_hints,
         "word_map_prompt_injection": False,

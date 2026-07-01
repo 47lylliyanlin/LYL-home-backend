@@ -181,9 +181,20 @@
       const detail = last.detail_source_ids || [];
       const diffused = last.diffused_context || [];
       const concepts = (last.word_map_hints && last.word_map_hints.concepts) || [];
+      const explanations = last.scene_explanations || [];
+      const explanationRows = explanations.length
+        ? explanations.map(item => `
+          <div class="candidate">
+            <div><strong>${escapeHtml(item.title || item.id)}</strong></div>
+            <div class="small mono">${escapeHtml(item.id)} ? ${escapeHtml(item.type)} ? importance=${escapeHtml(item.importance)} ? use=${escapeHtml(item.use_count)} ? pinned=${escapeHtml(item.pinned)}</div>
+            <div class="small mono">keyword=${escapeHtml(item.keyword_score)} ? vector=${escapeHtml(item.vector_score)} ? base=${escapeHtml(item.base_score)} ? final=${escapeHtml(item.final_score)}</div>
+          </div>`).join('')
+        : '<div class="small">No scene scoring data.</div>';
       const rows = [
         metric('direct seeds', direct.length),
         `<div class="small mono">${escapeHtml(direct.join(', ') || 'none')}</div>`,
+        metric('scene scoring', explanations.length),
+        explanationRows,
         metric('wake anchors', wake.length),
         `<div class="small mono">${escapeHtml(wake.join(', ') || 'none')}</div>`,
         metric('detail source ids', detail.length),
