@@ -1024,3 +1024,56 @@ Dashboard ? Memory Seeds ?????????? Scene Memory ???????????????????????????? pe
 - `python -m py_compile api/memory.py api/gateway.py main.py` ??
 - `prepare_chat_turn()` ??????? `scene_explanations`
 - ????????? API
+
+---
+
+## 2026-07-01 - 云端基础部署完成
+
+### 目标
+
+把当前 Kiro 项目部署到 Ubuntu VPS 上，先完成公网可访问的 Web 版本。记忆系统先保持空记忆或基础初始化，后续再继续优化。
+
+### 实际部署结果
+
+1. 后端代码部署到 `/opt/kiro/backend`。
+2. 前端代码部署到 `/opt/kiro/frontend`。
+3. 后端使用 Python 3.11 虚拟环境运行。
+4. 云端安装使用 `requirements-cloud.txt`，避免 2GB 内存服务器安装 torch、FunASR、Whisper 等重型依赖导致卡死。
+5. `.env` 当前使用 GLM 路由：BigModel Anthropic-compatible，模型为 `glm-4.6v`。
+6. Supervisor 已接管后端进程，进程名为 `kiro-backend`。
+7. Nginx 已对外托管前端，并把 `/api/`、`/audio/`、`/dashboard/` 转发到后端。
+8. UFW 防火墙已放行 80/443，解决了本地浏览器访问 502 / 连接超时的问题。
+9. 窗口 C 云端基础部署已完成，窗口 D 前端/PWA 基础工作已完成。
+
+### 验证
+
+- `curl http://127.0.0.1:8000/` 返回后端健康信息。
+- `curl http://127.0.0.1:8000/api/ai/config` 返回 GLM 配置。
+- `curl http://207.148.101.128/` 返回前端 HTML。
+- `curl http://207.148.101.128/api/ai/config` 返回当前 AI 路由。
+- 浏览器访问 `http://207.148.101.128` 成功。
+
+### 关键经验
+
+- 服务器命令必须在 SSH 窗口执行，提示符应类似 `root@kiro-server:/opt/kiro/backend#`。
+- Windows PowerShell 只能用于本地测试公网访问，例如 `curl.exe http://207.148.101.128/api/ai/config`。
+- 如果服务器内部能访问 80，但本地电脑访问失败，优先检查 UFW 和云平台安全组。
+- 如果前端页面能打开但发送失败，再检查前端 API 地址、Nginx `/api/` 代理、后端日志和模型 API 返回。
+
+### 常用运维命令
+
+```bash
+supervisorctl status kiro-backend
+supervisorctl restart kiro-backend
+tail -n 80 /var/log/kiro/backend.err.log
+tail -n 80 /var/log/kiro/backend.out.log
+nginx -t
+systemctl reload nginx
+ufw status
+```
+
+### 后续分工
+
+- 窗口 B：继续记忆系统优化，不处理 Nginx 和 PWA 主线。
+- 窗口 C：云端基础部署已完成，后续继续 HTTPS、备份、恢复、日志、安全访问。
+- 窗口 D：前端/PWA 基础已完成，后续继续移动端布局、安装体验、输入区和记忆状态展示。

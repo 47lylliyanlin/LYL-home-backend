@@ -399,3 +399,48 @@
 2. ?????????????? session assistant ??????????????????
 3. ?? token ???????? A4??????????????????????????????
 4. Relationship Weather / Darkroom / feel / I ?????????????????????????
+
+---
+
+## 2026-07-01 云端基础部署完成
+
+本阶段已经完成云端基础版上线，目标是先让 Web 端可以通过公网 IP 访问，并让前端请求稳定转发到后端。
+
+### 当前云端状态
+
+- 服务器系统：Ubuntu 22.04 LTS
+- 公网访问地址：http://207.148.101.128
+- 后端目录：/opt/kiro/backend
+- 前端目录：/opt/kiro/frontend
+- 后端守护：Supervisor，进程名 kiro-backend
+- Web 服务：Nginx
+- 后端端口：127.0.0.1:8000
+- 对外端口：80
+- 当前模型路由：GLM / BigModel Anthropic-compatible，模型 glm-4.6v
+
+### 已完成内容
+
+- 使用 `requirements-cloud.txt` 安装云端轻量依赖，避开 torch、FunASR、Whisper 等重型本地模型依赖。
+- 后端 `.env` 已配置为 GLM 路由，`/api/ai/config` 已确认能识别当前模型配置。
+- 后端已由 Supervisor 接管，服务重启后可以自动拉起。
+- 前端静态文件已部署到 `/opt/kiro/frontend`。
+- Nginx 已配置：`/` 指向前端，`/api/`、`/audio/`、`/dashboard/` 代理到后端。
+- UFW 防火墙已放行 80/443，公网访问已打通。
+- 窗口 C 的云端基础部署已完成。
+- 窗口 D 的前端/PWA 基础工作已完成。
+
+### 下一阶段重点
+
+1. 为公网 Dashboard 增加更严格的访问控制。
+2. 补充备份与恢复流程，尤其是 memory、runtime、chroma_db。
+3. 继续优化记忆系统 token 消耗，重点观察 Scene Memory、session messages、记忆提取三处成本。
+4. 在前端/PWA 基础上继续优化移动端体验、输入区和记忆状态展示。
+5. 后续再考虑 MCP 工具层，用于更接近原版 Ombre-Brain 的主动记忆调用生态。
+
+### 多窗口分工状态
+
+- 窗口 B：继续记忆系统优化主线。负责 Gateway、session、Scene Memory、Profile Wake、Relationship Weather、Darkroom、token 消耗分析。
+- 窗口 C：云端基础部署已完成，后续只负责运维收尾：HTTPS、备份、恢复、日志、安全访问。
+- 窗口 D：前端/PWA 基础已完成，后续只负责体验迭代：移动端布局、聊天输入区、记忆状态展示、模型切换界面。
+
+注意：B 不提交服务器真实 memory/runtime 数据；C/D 后续不要直接改后端记忆核心文件，避免和记忆系统优化互相覆盖。

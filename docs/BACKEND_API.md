@@ -890,3 +890,70 @@ Use `KIRO_CORS_ORIGINS` to restrict allowed frontend origins. Do not keep `*` fo
 | MEMORY_SEARCH_BASE_WEIGHT | 0.25 | importance / pinned / permanent ????????????? |
 
 Scene Memory ???????????????????????????????????? prompt?permanent / pinned ??????????????????
+
+---
+
+## 2026-07-01 云端部署接口与访问地址
+
+### 当前公网地址
+
+| 类型 | 地址 | 说明 |
+|------|------|------|
+| 前端页面 | `http://207.148.101.128/` | Nginx 静态托管 `/opt/kiro/frontend` |
+| 后端健康检查 | `http://207.148.101.128/api/ai/config` | 通过 Nginx `/api/` 代理到后端 |
+| 后端本机地址 | `http://127.0.0.1:8000/` | 仅服务器内部使用 |
+| Dashboard | `http://207.148.101.128/dashboard/` | 通过 Nginx 代理到后端 Dashboard |
+
+### Nginx 路由关系
+
+```text
+公网用户
+  -> http://207.148.101.128/
+  -> Nginx
+     -> /              读取 /opt/kiro/frontend/index.html
+     -> /api/          转发到 http://127.0.0.1:8000/api/
+     -> /audio/        转发到 http://127.0.0.1:8000/audio/
+     -> /dashboard/    转发到 http://127.0.0.1:8000/dashboard/
+```
+
+### 后端进程
+
+后端由 Supervisor 管理，进程名：`kiro-backend`。
+
+常用命令：
+
+```bash
+supervisorctl status kiro-backend
+supervisorctl restart kiro-backend
+tail -n 80 /var/log/kiro/backend.err.log
+tail -n 80 /var/log/kiro/backend.out.log
+```
+
+### 云端依赖
+
+云端优先使用 `requirements-cloud.txt`，不要直接安装完整本地语音依赖。2GB 内存服务器不适合默认安装 torch、FunASR、Whisper、MeloTTS 等重型本地模型。
+
+当前云端语音识别默认关闭：
+
+```text
+STT_PROVIDER=disabled
+```
+
+TTS 可继续走云端 API，例如 ElevenLabs。后续如果要恢复本地语音模型，应单独准备更高内存服务器或拆分语音服务。
+
+### 当前模型路由
+
+`GET /api/ai/config` 可查看当前启用的模型配置，但不会返回 API Key。
+
+当前线上验证结果：
+
+```json
+{"profile":"glm","provider":"anthropic","base_url":"https://open.bigmodel.cn/api/anthropic","model":"glm-4.6v","has_api_key":true}
+```
+
+### 公开部署注意事项
+
+- `.env`、真实 API Key、memory/runtime 数据不得上传 GitHub。
+- Dashboard、Gateway debug、Profile 审批、Darkroom、Dream、Maintenance 等接口应继续加强访问控制。
+- 正式绑定域名后，需要补充 HTTPS。
+- 多端阶段应补充账号或设备身份，否则不同设备的 session 与记忆边界会混在一起。
