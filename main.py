@@ -7,7 +7,7 @@ import uvicorn
 from api.stt import transcribe_audio
 from api.tts import text_to_speech
 from api.memory import get_memory_summary, rebuild_vector_index
-from api.gateway import prepare_chat_turn, consolidate_chat_turn, get_last_injected_context
+from api.gateway import prepare_chat_turn, consolidate_chat_turn, get_last_injected_context, update_last_injected_context
 from api.profile import profile_manager
 from api.memory_graph import graph_status
 from api.word_map import load_word_map, rebuild_word_map
@@ -15,6 +15,7 @@ from api.darkroom import darkroom_status, enter_darkroom_note
 from api.dream import dream_light_status, run_dream_light, run_memory_maintenance
 from api.pulse import introspection_status, pulse_status
 from api.ai_client import active_ai_config, chat_completion, chat_messages
+from api.memory_tools import internal_tool_instructions, internal_tool_loop_enabled, parse_tool_request, render_tool_result_for_prompt, run_memory_tool, tool_result_summary
 from api.security import admin_auth_middleware, cors_origins
 import os
 from pathlib import Path
@@ -351,12 +352,42 @@ Output language override:
 - Reply in Simplified Chinese only.
 - Do not include English unless the user explicitly asks for English wording.
 - Keep Kiro's warmth, memory, and natural tone.
+{internal_tool_instructions()}
 """
         reply_text = chat_messages(
             system_prompt=chinese_system_prompt,
             messages=prepared.messages,
             max_tokens=1024,
         )
+
+        tool_request = parse_tool_request(reply_text) if internal_tool_loop_enabled() else None
+        if tool_request:
+            tool_result = run_memory_tool(tool_request)
+            update_last_injected_context({
+                "tool_loop_enabled": True,
+                "tool_loop_requested": True,
+                "tool_loop_request": tool_request,
+                "tool_loop_result": tool_result_summary(tool_result),
+            })
+            tool_context = render_tool_result_for_prompt(tool_result)
+            final_system_prompt = f"""{chinese_system_prompt}
+
+{tool_context}
+
+Now answer the user's original message naturally in Simplified Chinese. Use the memory tool result only if it is genuinely relevant. Do not expose internal tool mechanics. Do not output tool JSON in this second pass.
+"""
+            reply_text = chat_messages(
+                system_prompt=final_system_prompt,
+                messages=prepared.messages,
+                max_tokens=1024,
+            )
+        else:
+            update_last_injected_context({
+                "tool_loop_enabled": internal_tool_loop_enabled(),
+                "tool_loop_requested": False,
+                "tool_loop_request": None,
+                "tool_loop_result": None,
+            })
 
         try:
             await consolidate_chat_turn(request.message, reply_text, session_id=request.session_id)

@@ -111,7 +111,9 @@
       <button id="refreshBtn">刷新</button>
       <button id="dreamBtn">运行 Dream Light</button>
       <button id="wordMapBtn">重建 Word Map</button>
-    </div>
+          <button id="vectorBtn">Rebuild Vector</button>
+      <button id="maintenanceBtn">Full Maintenance</button>
+</div>
     <div class="grid">
       <section class="span-3"><h2>Memory Counts</h2><div id="counts"></div></section>
       <section class="span-3"><h2>Gateway</h2><div id="gateway"></div></section>
@@ -181,6 +183,8 @@
       const detail = last.detail_source_ids || [];
       const diffused = last.diffused_context || [];
       const concepts = (last.word_map_hints && last.word_map_hints.concepts) || [];
+      const toolResult = last.tool_loop_result || {};
+      const toolMemories = toolResult.memories || [];
       const explanations = last.scene_explanations || [];
       const explanationRows = explanations.length
         ? explanations.map(item => `
@@ -203,6 +207,10 @@
         `<div class="small mono">${escapeHtml(diffused.map(x => x.id).join(', ') || 'none')}</div>`,
         metric('word hints', concepts.length),
         `<div class="small mono">${escapeHtml(concepts.map(x => x.word).join(', ') || 'none')}</div>`,
+        metric('tool loop', yn(last.tool_loop_enabled)),
+        metric('tool requested', yn(last.tool_loop_requested)),
+        metric('tool result count', toolMemories.length),
+        `<div class="small mono">${escapeHtml(toolMemories.map(x => `${x.id}:${x.final_score}`).join(', ') || 'none')}</div>`,
         metric('just now triggered', yn(last.just_now_triggered)),
         metric('detail requested', yn(last.detail_requested)),
       ];
@@ -249,6 +257,9 @@
         metric('detail recall', yn(g.detail_recall_used)),
         metric('scene count', g.scene_count),
         metric('wake count', g.wake_count),
+        metric('tool loop', yn(g.tool_loop_enabled)),
+        metric('tool requested', yn(g.tool_loop_requested)),
+        metric('tool results', g.tool_loop_result_count ?? 0),
       ].join('');
       $('aiConfig').innerHTML = [
         metric('profile', aiConfig.profile || ''),

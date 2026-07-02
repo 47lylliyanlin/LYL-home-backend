@@ -458,3 +458,17 @@
 - 窗口 D：前端/PWA 基础已完成，后续只负责体验迭代：移动端布局、聊天输入区、记忆状态展示、模型切换界面。
 
 注意：B 不提交服务器真实 memory/runtime 数据；C/D 后续不要直接改后端记忆核心文件，避免和记忆系统优化互相覆盖。
+---
+
+## 🧭 2026年7月2日阶段更新：A5-2 Internal Tool Loop MVP
+
+已完成第一版 internal tool loop：`memory_breath`。
+
+意义：Web / PWA / App 聊天不再只能依赖 Gateway 自动注入记忆，模型现在可以在回答前主动请求一次长期记忆搜索。当前只做读工具，不做写入工具。
+
+下一步建议：
+
+1. 观察真实聊天中模型是否会正确请求 `memory_breath`。
+2. 如果稳定，再补 `memory_read_bucket`。
+3. 再补 `memory_trace`。
+4. 写入类工具等读工具稳定后再做，先进入候选审批，不直接写 permanent。

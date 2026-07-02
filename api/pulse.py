@@ -55,6 +55,10 @@ def pulse_status() -> Dict:
             "detail_recall_used": last_context.get("detail_recall_used"),
             "scene_count": len(last_context.get("scene_context", [])),
             "wake_count": len(last_context.get("wake_context", [])),
+            "tool_loop_enabled": last_context.get("tool_loop_enabled"),
+            "tool_loop_requested": last_context.get("tool_loop_requested"),
+            "tool_loop_tool": (last_context.get("tool_loop_request") or {}).get("tool"),
+            "tool_loop_result_count": (last_context.get("tool_loop_result") or {}).get("count"),
         },
         "profile": {
             "documents": list(profiles.keys()),

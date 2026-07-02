@@ -479,3 +479,11 @@ def get_last_injected_context() -> Dict:
         return json.loads(LAST_CONTEXT_PATH.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return {}
+
+
+def update_last_injected_context(updates: Dict):
+    _ensure_runtime_dir()
+    context = get_last_injected_context()
+    context.update(updates)
+    LAST_CONTEXT_PATH.write_text(json.dumps(context, ensure_ascii=False, indent=2), encoding="utf-8")
+    return context

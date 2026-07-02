@@ -1110,3 +1110,53 @@ Dashboard ???????????????? `/api/maintenance/run` ????????
 
 - `python -m py_compile api/memory.py api/dream.py main.py` ??
 - ???? `rebuild_vector_index(include_archive=False)` ??
+
+---
+
+## 📅 2026年7月2日 - A5-2 Internal Tool Loop MVP
+
+### 1. memory_breath 读工具
+
+新增 `api/memory_tools.py`，实现第一版 internal tool loop。
+
+当前只包含 `memory_breath`：
+
+- 搜索 active long-term memory
+- 返回少量 bucket 摘要、id、分数
+- 不写入记忆
+- 不修改 use_count
+- 不读取 archive
+- 不读取 Darkroom 正文
+
+### 2. /api/chat 接入工具循环
+
+文本聊天现在允许模型在回答前返回严格 JSON：
+
+```json
+{"tool":"memory_breath","query":"...","reason":"..."}
+```
+
+后端会拦截该 JSON，执行工具，再把工具结果交回模型生成最终中文回复。
+
+### 3. Dashboard 与 Pulse
+
+新增调试字段：
+
+- tool_loop_enabled
+- tool_loop_requested
+- tool_loop_request
+- tool_loop_result
+
+Dashboard 可显示本轮是否触发工具，以及工具返回了哪些记忆。
+
+### 4. 配置
+
+新增 `.env.example`：
+
+```text
+MEMORY_INTERNAL_TOOL_LOOP_ENABLED=true
+```
+
+### 5. 边界
+
+本轮不实现写入类工具，不改变 profile candidate、feel、I、Darkroom 的写入规则。

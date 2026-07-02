@@ -474,3 +474,68 @@ Darkroom 是私密内部反思房间。
 - Web / PWA / App 与 MCP 客户端不冲突。
 - 未来应先做 internal tool loop，再做完整 MCP 兼容。
 - A5 要先讨论内在状态边界，再写代码。
+
+---
+
+## 12. A5-2 已实现：internal tool loop MVP
+
+当前已实现第一版 internal tool loop，只包含读工具 `memory_breath`。
+
+### 12.1 当前能力
+
+在 `/api/chat` 文本聊天中，模型可以选择先不直接回答，而是返回一个严格 JSON 工具请求：
+
+```json
+{"tool":"memory_breath","query":"短搜索词","reason":"为什么需要查记忆"}
+```
+
+后端会拦截这个 JSON，不展示给用户，然后执行 `memory_breath`。
+
+### 12.2 memory_breath 做什么
+
+`memory_breath` 会搜索 active long-term memory，返回少量相关 bucket 摘要和 id。
+
+它当前是只读工具：
+
+- 不写新记忆
+- 不更新 bucket 内容
+- 不修改 use_count
+- 不读取 archive
+- 不读取 Darkroom 正文
+
+### 12.3 当前流程
+
+```text
+用户消息
+↓
+Gateway 注入最小上下文
+↓
+模型正常回答，或返回 memory_breath JSON
+↓
+如果返回工具 JSON：后端执行 memory_breath
+↓
+工具结果作为内部上下文交回模型
+↓
+模型生成最终中文回复
+↓
+用户只看到最终回复
+```
+
+### 12.4 调试信息
+
+`GET /api/gateway/last-context` 会记录：
+
+- tool_loop_enabled
+- tool_loop_requested
+- tool_loop_request
+- tool_loop_result
+
+Dashboard 的 Gateway / Memory Seeds 区域会显示 tool loop 是否启用、是否被请求，以及返回的记忆 id 和分数。
+
+### 12.5 下一步
+
+下一步可以继续实现：
+
+- memory_read_bucket：读取某条 bucket 详情
+- memory_trace：沿 memory id / moment id 追细节
+- 然后再考虑写入类候选工具
