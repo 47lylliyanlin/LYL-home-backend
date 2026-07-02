@@ -506,3 +506,30 @@
 3. `memory_trace`：沿 moment / edge 追上下文。
 
 下一步建议：进入写入候选工具阶段，但先只做 candidate，不直接写入 permanent。
+
+---
+
+## 2026-07-03 阶段更新：A5-5a 候选记忆入口
+
+A5 阶段已经从“只读工具链”进入“写入候选”的第一步。
+
+已完成：
+
+1. `memory_breath`：模型主动搜索长期记忆。
+2. `memory_read_bucket`：模型主动读取某条 bucket 详情。
+3. `memory_trace`：模型沿 moment / edge 追上下文。
+4. `memory_hold_candidate`：模型主动提出待确认记忆候选。
+
+当前重要原则：
+
+- Gateway 负责唤醒和整理上下文。
+- Internal Tool Loop 负责给 AI 一点主动权。
+- 读工具可以直接返回上下文。
+- 写工具先进入候选队列，不直接进入正式长期记忆。
+
+下一步建议：
+
+1. 真实聊天中观察 `memory_hold_candidate` 是否太积极或太保守。
+2. 再决定是否做候选审批按钮。
+3. 再决定是否做 `memory_grow_candidate`，用于让 AI 建议更新已有 bucket。
+4. Relationship Weather / feel / I / Darkroom 主动写入机制仍放到后续“内在状态层”阶段。

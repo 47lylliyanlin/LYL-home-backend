@@ -1242,3 +1242,46 @@ internal tool loop 新增 `memory_trace`。
 ### 4. 验证
 
 使用 `mem_20260626_013620_146122` 验证，成功返回对应 moment 和 continues edge。
+
+---
+
+## 2026-07-03 - A5-5a memory_hold_candidate
+
+### 1. 新增写入候选工具
+
+Internal Tool Loop 新增 `memory_hold_candidate`。
+
+它不是正式写入工具，而是“候选记忆”入口：模型可以主动提出某条内容值得记住，后端只把它放进待确认队列。
+
+当前存储位置：
+
+```text
+memory/candidates/
+```
+
+### 2. 为什么先做 candidate
+
+用户希望记忆系统更接近 Ombre-Brain 的原始方向：AI 有自己的判断，不是一切都由 Gateway 强制注入。
+
+但写入长期记忆风险更高，所以本阶段不直接写 permanent，不直接改 profile，不直接写 Darkroom，只先保存候选。
+
+### 3. 当前边界
+
+- 只在文本聊天 `/api/chat` 的 internal tool loop 中生效。
+- 只创建 pending candidate。
+- 不修改正式记忆 bucket。
+- 不修改 use_count。
+- 不读取或写入 Darkroom 正文。
+- 不把用户画像猜测直接写成事实。
+
+### 4. Dashboard
+
+Dashboard 新增 `Memory Candidate Queue`，用于查看 AI 主动提出的候选记忆。
+
+### 5. 验证
+
+已使用项目虚拟环境验证：
+
+- `api/memory_candidates.py`、`api/memory_tools.py`、`main.py` 语法检查通过。
+- `memory_hold_candidate` 可被解析、执行、生成 pending candidate。
+- 测试候选文件已在验证后删除，没有留下测试记忆。

@@ -124,6 +124,7 @@
       <section class="span-6"><h2>Graph</h2><div id="graph"></div></section>
       <section class="span-6"><h2>Profile</h2><pre id="profile"></pre></section>
       <section class="span-6"><h2>Profile Fact Approval</h2><div id="candidates"></div></section>
+      <section class="span-6"><h2>Memory Candidate Queue</h2><div id="memoryCandidates"></div></section>
       <section class="span-6"><h2>Gateway Injection Layers</h2><div id="layers"></div></section>
       <section class="span-6"><h2>Memory Seeds</h2><div id="seeds"></div></section>
       <section class="span-6"><h2>Last Injected Context</h2><pre id="lastContext"></pre></section>
@@ -165,6 +166,21 @@
             </div>
           </div>`;
       }).join('');
+    }
+
+    function renderMemoryCandidates(items) {
+      if (!items.length) return '<span class="small">No memory candidates.</span>';
+      return items.map(item => `
+        <div class="candidate">
+          <div class="candidate-title">
+            <strong>${escapeHtml(item.title || item.name)}</strong>
+            <span class="pill">${escapeHtml(item.status || 'pending')}</span>
+          </div>
+          <div class="small mono">${escapeHtml(item.id || '')}</div>
+          <div class="small">type: ${escapeHtml(item.suggested_type || 'dynamic')} | source: ${escapeHtml(item.source || '')} | updated: ${escapeHtml(item.updated_at || '')}</div>
+          <div class="small">reason: ${escapeHtml(item.reason || '')}</div>
+          <pre>${escapeHtml(item.preview || '')}</pre>
+        </div>`).join('');
     }
 
     function renderLayers(layers) {
@@ -238,10 +254,11 @@
 
     async function load() {
       $('status').textContent = '读取中...';
-      const [pulse, profile, candidates, aiConfig, last] = await Promise.all([
+      const [pulse, profile, candidates, memoryCandidates, aiConfig, last] = await Promise.all([
         api('/api/pulse'),
         api('/api/profile'),
         api('/api/profile/candidates').catch(() => ({ candidates: [] })),
+        api('/api/memory/candidates').catch(() => ({ candidates: [] })),
         api('/api/ai/config').catch(() => ({})),
         api('/api/gateway/last-context').catch(() => ({})),
       ]);
@@ -295,6 +312,7 @@
       ].join('');
       $('profile').textContent = JSON.stringify(profile, null, 2);
       $('candidates').innerHTML = renderCandidates(candidates.candidates || []);
+      $('memoryCandidates').innerHTML = renderMemoryCandidates(memoryCandidates.candidates || []);
       $('layers').innerHTML = renderLayers(last.layers || []);
       $('seeds').innerHTML = renderSeeds(last || {});
       $('lastContext').textContent = JSON.stringify(last, null, 2);

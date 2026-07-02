@@ -621,3 +621,50 @@ memory_trace        沿 moment / edge 追上下文
 ```
 
 下一阶段可以进入写入候选工具：`memory_hold_candidate` / `memory_grow_candidate`，但它们应先进入候选审批，不直接写 permanent。
+
+---
+
+## 16. A5-5a 已实现：memory_hold_candidate
+
+Internal Tool Loop 已加入第一个写入候选工具：`memory_hold_candidate`。
+
+它的意义不是让模型直接写长期记忆，而是让模型可以表达：
+
+```text
+我觉得这条内容可能值得记住。
+```
+
+然后后端只创建一条 pending candidate，等待后续人工或 Dashboard 审核。
+
+### 当前流程
+
+```text
+用户消息
+↓
+Gateway 准备上下文
+↓
+模型判断是否需要工具
+↓
+如果模型认为值得记住，返回 memory_hold_candidate 请求
+↓
+后端写入 memory/candidates/ 下的 pending candidate
+↓
+候选结果回传给模型
+↓
+模型自然回复用户，但不能声称已经永久保存
+```
+
+### 边界
+
+- 不写 permanent。
+- 不直接改 profile。
+- 不直接 grow 旧 bucket。
+- 不写 Darkroom 正文。
+- 不把猜测当成用户事实。
+- 候选文件属于本地运行数据，不提交 GitHub。
+
+### 与原版 Ombre-Brain 的关系
+
+这一步是在 Web / PWA / App 体系里补回“AI 主动判断是否要记住”的能力。
+
+原版偏 MCP 工具生态；当前项目用 Kiro Gateway + Internal Tool Loop 来承接多端前端。`memory_hold_candidate` 是主动写入生态的第一块，但仍然保持保守：先候选，后确认。

@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 
 from .bucket_format import direct_seed_text
 from .memory import Memory, memory_system
+from .memory_candidates import create_memory_candidate
 from .memory_graph import list_edges, list_moments
 
 
@@ -47,6 +48,9 @@ Internal memory tool option:
 {"tool":"memory_read_bucket","bucket_id":"mem_xxx","reason":"why this bucket detail is needed"}
 - If the user asks what happened around a surfaced memory, how it connects, or what followed, reply with exactly:
 {"tool":"memory_trace","id":"mem_or_moment_id","reason":"why graph context is needed"}
+- You may propose a pending memory candidate only when the user explicitly asks you to remember something, or when a stable fact, promise, project state, or relationship milestone clearly changed. Use it sparingly. Do not store guesses about the user as facts.
+- To propose a pending memory candidate, reply with exactly:
+{"tool":"memory_hold_candidate","title":"short title","content":"what should be remembered","suggested_type":"dynamic","reason":"why it may be worth remembering"}
 - If you do not need memory, answer normally.
 """
 
@@ -101,6 +105,23 @@ def parse_tool_request(raw_text: str) -> Optional[Dict]:
             "tool": "memory_trace",
             "id": trace_id[:140],
             "reason": reason,
+        }
+
+    if tool == "memory_hold_candidate":
+        title = str(payload.get("title") or "").strip()
+        content = str(payload.get("content") or payload.get("memory") or "").strip()
+        if not content:
+            return None
+        evidence_ids = payload.get("evidence_ids") or []
+        if not isinstance(evidence_ids, list):
+            evidence_ids = []
+        return {
+            "tool": "memory_hold_candidate",
+            "title": title[:120] or "Untitled memory candidate",
+            "content": content[:4000],
+            "suggested_type": str(payload.get("suggested_type") or "dynamic").strip()[:80],
+            "reason": reason or str(payload.get("why") or "").strip()[:300],
+            "evidence_ids": [str(item).strip()[:160] for item in evidence_ids if str(item).strip()][:8],
         }
 
     return None
@@ -254,11 +275,38 @@ def run_memory_tool(request: Dict) -> Dict:
         return memory_read_bucket(bucket_id=request.get("bucket_id", ""))
     if request.get("tool") == "memory_trace":
         return memory_trace(trace_id=request.get("id", ""))
+    if request.get("tool") == "memory_hold_candidate":
+        return {
+            "tool": "memory_hold_candidate",
+            **create_memory_candidate(
+                title=request.get("title", ""),
+                content=request.get("content", ""),
+                suggested_type=request.get("suggested_type", "dynamic"),
+                reason=request.get("reason", ""),
+                source="internal_tool",
+                evidence_ids=request.get("evidence_ids", []),
+                confidence=0.5,
+            ),
+        }
     return {"tool": request.get("tool"), "error": "unsupported tool"}
 
 
 def render_tool_result_for_prompt(result: Dict) -> str:
     tool = result.get("tool")
+    if tool == "memory_hold_candidate":
+        if not result.get("ok"):
+            return f"memory_hold_candidate failed: {result.get('error', 'unknown error')}"
+        candidate = result.get("candidate") or {}
+        return "\n".join([
+            "Internal memory tool result: memory_hold_candidate",
+            "A pending memory candidate was created for later review. It is not confirmed long-term memory yet.",
+            "In the final answer, acknowledge naturally if appropriate, but do not say it has been permanently saved.",
+            f"- candidate_id: {candidate.get('id')}",
+            f"  title: {candidate.get('title')}",
+            f"  suggested_type: {candidate.get('suggested_type')}",
+            f"  status: {candidate.get('status')}",
+        ])
+
     if tool == "memory_read_bucket":
         if not result.get("found"):
             return f"memory_read_bucket did not find active bucket: {result.get('bucket_id', '')}"
@@ -325,6 +373,21 @@ def render_tool_result_for_prompt(result: Dict) -> str:
 
 
 def tool_result_summary(result: Dict) -> Dict:
+    if result.get("tool") == "memory_hold_candidate":
+        candidate = result.get("candidate") or {}
+        return {
+            "tool": result.get("tool"),
+            "ok": result.get("ok", False),
+            "error": result.get("error"),
+            "candidate": {
+                "id": candidate.get("id"),
+                "title": candidate.get("title"),
+                "suggested_type": candidate.get("suggested_type"),
+                "status": candidate.get("status"),
+            } if candidate else None,
+            "memories": [],
+            "count": 1 if candidate else 0,
+        }
     if result.get("tool") == "memory_read_bucket":
         memory = result.get("memory") or {}
         return {

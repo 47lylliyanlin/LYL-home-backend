@@ -9,6 +9,7 @@ from api.tts import text_to_speech
 from api.memory import get_memory_summary, rebuild_vector_index
 from api.gateway import prepare_chat_turn, consolidate_chat_turn, get_last_injected_context, update_last_injected_context
 from api.profile import profile_manager
+from api.memory_candidates import list_memory_candidates
 from api.memory_graph import graph_status
 from api.word_map import load_word_map, rebuild_word_map
 from api.darkroom import darkroom_status, enter_darkroom_note
@@ -127,6 +128,12 @@ def reject_profile_candidate(candidate_name: str, request: ProfileCandidateRevie
         return profile_manager.reject_candidate(candidate_name, reviewer=request.reviewer, reason=request.reason)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="candidate not found")
+
+
+@app.get("/api/memory/candidates")
+def get_memory_candidates():
+    """Return pending memory candidates proposed by the internal tool loop."""
+    return {"candidates": list_memory_candidates()}
 
 
 @app.get("/api/memory/graph/status")
