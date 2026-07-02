@@ -472,3 +472,23 @@
 2. 如果稳定，再补 `memory_read_bucket`。
 3. 再补 `memory_trace`。
 4. 写入类工具等读工具稳定后再做，先进入候选审批，不直接写 permanent。
+
+---
+
+## 🧭 2026年7月2日阶段更新：A5-1 / A5-3 收口
+
+已完成：
+
+1. A5-1 Gateway 职责收缩
+   - 新增 `MEMORY_AUTO_SCENE_ENABLED`。
+   - 自动 Scene Memory 默认保留，后续可关闭。
+   - Dashboard 显示 auto scene 状态。
+
+2. A5-3 memory_read_bucket
+   - internal tool loop 新增只读 bucket 详情读取工具。
+   - 与 `memory_breath` 形成“搜索 -> 展开”的基础能力。
+
+下一步建议：
+
+- A5-4：memory_trace，沿 moment / edge 追细节。
+- 然后再进入写入候选工具和内在状态层。

@@ -40,8 +40,10 @@ Internal memory tool option:
 - You may decide whether long-term memory is needed before answering.
 - Use this only when the current message truly needs long-term memory that is not already present in the context.
 - Do not use it for just-now / previous sentence / current-session questions; those are handled by recent chat context.
-- If you need memory, reply with exactly one compact JSON object and no other text:
+- If you need to search memory, reply with exactly one compact JSON object and no other text:
 {"tool":"memory_breath","query":"short search query","reason":"why this memory search is needed"}
+- If the relevant memory id is already available and the user asks to expand it, reply with exactly:
+{"tool":"memory_read_bucket","bucket_id":"mem_xxx","reason":"why this bucket detail is needed"}
 - If you do not need memory, answer normally.
 """
 
@@ -65,17 +67,30 @@ def parse_tool_request(raw_text: str) -> Optional[Dict]:
         return None
     if not isinstance(payload, dict):
         return None
-    if payload.get("tool") != "memory_breath":
-        return None
-    query = str(payload.get("query") or "").strip()
-    if not query:
-        return None
-    reason = str(payload.get("reason") or "").strip()
-    return {
-        "tool": "memory_breath",
-        "query": query[:240],
-        "reason": reason[:300],
-    }
+
+    tool = payload.get("tool")
+    reason = str(payload.get("reason") or "").strip()[:300]
+    if tool == "memory_breath":
+        query = str(payload.get("query") or "").strip()
+        if not query:
+            return None
+        return {
+            "tool": "memory_breath",
+            "query": query[:240],
+            "reason": reason,
+        }
+
+    if tool == "memory_read_bucket":
+        bucket_id = str(payload.get("bucket_id") or payload.get("id") or "").strip()
+        if not bucket_id:
+            return None
+        return {
+            "tool": "memory_read_bucket",
+            "bucket_id": bucket_id[:120],
+            "reason": reason,
+        }
+
+    return None
 
 
 def _memory_item(memory: Memory, item: Dict, content_limit: int) -> Dict:
@@ -112,13 +127,64 @@ def memory_breath(query: str, top_k: int = 3, content_limit: int = 650) -> Dict:
     }
 
 
+def _find_active_memory(memory_id: str) -> Optional[Memory]:
+    for memory in memory_system.load_all_memories(include_archive=False):
+        if memory.id == memory_id:
+            return memory
+    return None
+
+
+def memory_read_bucket(bucket_id: str, content_limit: int = 2200) -> Dict:
+    """Read one active memory bucket without touching use_count."""
+    memory = _find_active_memory(bucket_id)
+    if not memory:
+        return {
+            "tool": "memory_read_bucket",
+            "bucket_id": bucket_id,
+            "found": False,
+            "error": "active bucket not found",
+        }
+    return {
+        "tool": "memory_read_bucket",
+        "bucket_id": bucket_id,
+        "found": True,
+        "memory": {
+            "id": memory.id,
+            "title": memory.name or memory.id,
+            "type": memory.type,
+            "tags": memory.tags,
+            "importance": memory.importance,
+            "use_count": memory.use_count,
+            "content": _truncate(direct_seed_text(memory.content), content_limit),
+        },
+    }
+
+
 def run_memory_tool(request: Dict) -> Dict:
-    if request.get("tool") != "memory_breath":
-        return {"tool": request.get("tool"), "error": "unsupported tool"}
-    return memory_breath(query=request.get("query", ""), top_k=3)
+    if request.get("tool") == "memory_breath":
+        return memory_breath(query=request.get("query", ""), top_k=3)
+    if request.get("tool") == "memory_read_bucket":
+        return memory_read_bucket(bucket_id=request.get("bucket_id", ""))
+    return {"tool": request.get("tool"), "error": "unsupported tool"}
 
 
 def render_tool_result_for_prompt(result: Dict) -> str:
+    tool = result.get("tool")
+    if tool == "memory_read_bucket":
+        if not result.get("found"):
+            return f"memory_read_bucket did not find active bucket: {result.get('bucket_id', '')}"
+        item = result.get("memory") or {}
+        tags = ", ".join(item.get("tags") or []) or "none"
+        return "\n".join([
+            "Internal memory tool result: memory_read_bucket",
+            "Use this bucket detail as optional background. Do not mention the tool unless the user asks.",
+            f"- id: {item.get('id')}",
+            f"  title: {item.get('title')}",
+            f"  type: {item.get('type')}",
+            f"  tags: {tags}",
+            f"  content: {item.get('content')}",
+        ])
+
     memories = result.get("memories") or []
     if not memories:
         return f"memory_breath found no active long-term memories for query: {result.get('query', '')}"
@@ -143,6 +209,19 @@ def render_tool_result_for_prompt(result: Dict) -> str:
 
 
 def tool_result_summary(result: Dict) -> Dict:
+    if result.get("tool") == "memory_read_bucket":
+        memory = result.get("memory") or {}
+        return {
+            "tool": result.get("tool"),
+            "bucket_id": result.get("bucket_id"),
+            "found": result.get("found", False),
+            "count": 1 if result.get("found") else 0,
+            "memories": [{
+                "id": memory.get("id"),
+                "title": memory.get("title"),
+                "type": memory.get("type"),
+            }] if result.get("found") else [],
+        }
     return {
         "tool": result.get("tool"),
         "query": result.get("query"),

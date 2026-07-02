@@ -349,7 +349,10 @@ def prepare_chat_turn(
     detail_requested = needs_detail_recall(user_message)
     just_now_triggered = needs_just_now_context(user_message)
     just_now_turns = session_turns if (just_now_triggered or detail_requested) else []
-    scene_memories = [] if (just_now_turns or detail_requested) else build_scene_memories(user_message, exclude_ids=wake_ids)
+    auto_scene_enabled = _env_bool("MEMORY_AUTO_SCENE_ENABLED", True)
+    scene_memories = []
+    if auto_scene_enabled and not just_now_turns and not detail_requested:
+        scene_memories = build_scene_memories(user_message, exclude_ids=wake_ids)
     scene_explanations = []
     if scene_memories:
         scene_ids = {memory.id for memory in scene_memories}
@@ -423,6 +426,7 @@ def prepare_chat_turn(
         "wake_context": [_memory_ref(memory, "wake") for memory in wake_all[:2]],
         "just_now_used": bool(just_now_turns),
         "just_now_count": len(just_now_turns),
+        "auto_scene_enabled": auto_scene_enabled,
         "scene_context": [_memory_ref(memory, "scene") for memory in scene_memories],
         "scene_explanations": scene_explanations,
         "diffused_context": diffused_memories,

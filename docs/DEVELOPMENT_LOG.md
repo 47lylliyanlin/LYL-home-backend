@@ -1160,3 +1160,52 @@ MEMORY_INTERNAL_TOOL_LOOP_ENABLED=true
 ### 5. 边界
 
 本轮不实现写入类工具，不改变 profile candidate、feel、I、Darkroom 的写入规则。
+
+---
+
+## 📅 2026年7月2日 - A5-1 Gateway 职责收缩
+
+### 1. 自动 Scene Memory 开关
+
+新增：
+
+```text
+MEMORY_AUTO_SCENE_ENABLED=true
+```
+
+默认保留自动 Scene Memory，作为从 Gateway 自动召回过渡到 AI 主动 tool loop 的兼容层。
+
+### 2. last-context / Dashboard
+
+`last-context` 新增：
+
+- auto_scene_enabled
+
+Dashboard Gateway 面板可显示当前是否开启自动 Scene Memory。
+
+---
+
+## 📅 2026年7月2日 - A5-3 memory_read_bucket
+
+### 1. 新增只读工具
+
+internal tool loop 新增 `memory_read_bucket`。
+
+模型可请求：
+
+```json
+{"tool":"memory_read_bucket","bucket_id":"mem_xxx","reason":"..."}
+```
+
+### 2. 边界
+
+- 只读 active memory。
+- 不读 archive。
+- 不读 Darkroom 正文。
+- 不写入。
+- 不修改 use_count。
+- 返回正文截断。
+
+### 3. 目的
+
+`memory_breath` 负责搜索，`memory_read_bucket` 负责展开某条 bucket。下一步可继续做 `memory_trace`。

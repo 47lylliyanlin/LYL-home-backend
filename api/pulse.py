@@ -54,6 +54,7 @@ def pulse_status() -> Dict:
             "just_now_used": last_context.get("just_now_used"),
             "detail_recall_used": last_context.get("detail_recall_used"),
             "scene_count": len(last_context.get("scene_context", [])),
+            "auto_scene_enabled": last_context.get("auto_scene_enabled"),
             "wake_count": len(last_context.get("wake_context", [])),
             "tool_loop_enabled": last_context.get("tool_loop_enabled"),
             "tool_loop_requested": last_context.get("tool_loop_requested"),
