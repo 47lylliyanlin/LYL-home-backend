@@ -9,6 +9,8 @@ from typing import Dict, List, Optional
 
 import yaml
 
+from .memory_write_gate import evaluate_write_candidate
+
 CANDIDATES_DIR = Path("./memory/candidates")
 ALLOWED_TYPES = {"dynamic", "permanent", "profile_candidate", "feel", "I", "darkroom"}
 
@@ -53,6 +55,11 @@ def _parse_candidate(path: Path) -> Dict:
         "source": meta.get("source") or "unknown",
         "confidence": meta.get("confidence"),
         "evidence_ids": meta.get("evidence_ids") or [],
+        "gate_decision": meta.get("gate_decision") or "unknown",
+        "gate_code": meta.get("gate_code") or "",
+        "gate_reason": meta.get("gate_reason") or "",
+        "gate_risk_flags": meta.get("gate_risk_flags") or [],
+        "gate_duplicate": meta.get("gate_duplicate"),
         "created_at": meta.get("created_at") or datetime.fromtimestamp(stat.st_ctime).isoformat(),
         "updated_at": meta.get("updated_at") or datetime.fromtimestamp(stat.st_mtime).isoformat(),
         "file": str(path),
@@ -79,6 +86,16 @@ def create_memory_candidate(
         return {"ok": False, "error": "content is required"}
 
     evidence_ids = [_truncate(str(item), 160) for item in (evidence_ids or []) if str(item).strip()]
+    gate = evaluate_write_candidate(
+        title=safe_title,
+        content=safe_content,
+        suggested_type=suggested_type,
+        evidence_ids=evidence_ids,
+    )
+    status = "pending"
+    if not gate.get("accepted"):
+        status = "duplicate" if gate.get("decision") == "duplicate" else "rejected_by_gate"
+
     now = datetime.now().isoformat()
     candidate_id = f"memory_candidate_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{_slug(safe_title)}"
     path = CANDIDATES_DIR / f"{candidate_id}.md"
@@ -86,11 +103,16 @@ def create_memory_candidate(
         "id": candidate_id,
         "title": safe_title,
         "suggested_type": _safe_type(suggested_type),
-        "status": "pending",
+        "status": status,
         "reason": safe_reason,
         "source": source,
         "confidence": max(0.0, min(float(confidence or 0.5), 1.0)),
         "evidence_ids": evidence_ids,
+        "gate_decision": gate.get("decision"),
+        "gate_code": gate.get("code"),
+        "gate_reason": gate.get("reason"),
+        "gate_risk_flags": gate.get("risk_flags") or [],
+        "gate_duplicate": gate.get("duplicate"),
         "created_at": now,
         "updated_at": now,
     }
@@ -110,7 +132,8 @@ def create_memory_candidate(
 This is a pending memory candidate. It is not confirmed long-term memory until reviewed.
 """
     path.write_text(body, encoding="utf-8")
-    return {"ok": True, "candidate": _parse_candidate(path)}
+    candidate = _parse_candidate(path)
+    return {"ok": bool(gate.get("accepted")), "candidate": candidate, "gate": gate}
 
 
 def list_memory_candidates(limit: int = 50) -> List[Dict]:

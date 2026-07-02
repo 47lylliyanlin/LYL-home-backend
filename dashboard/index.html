@@ -179,6 +179,9 @@
           <div class="small mono">${escapeHtml(item.id || '')}</div>
           <div class="small">type: ${escapeHtml(item.suggested_type || 'dynamic')} | source: ${escapeHtml(item.source || '')} | updated: ${escapeHtml(item.updated_at || '')}</div>
           <div class="small">reason: ${escapeHtml(item.reason || '')}</div>
+          <div class="small">gate: ${escapeHtml(item.gate_decision || 'unknown')} / ${escapeHtml(item.gate_code || '')}</div>
+          <div class="small">gate reason: ${escapeHtml(item.gate_reason || '')}</div>
+          <div class="small mono">duplicate: ${escapeHtml(item.gate_duplicate ? JSON.stringify(item.gate_duplicate) : 'none')}</div>
           <pre>${escapeHtml(item.preview || '')}</pre>
         </div>`).join('');
     }

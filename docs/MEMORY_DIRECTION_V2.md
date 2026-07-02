@@ -422,58 +422,175 @@ Darkroom 是私密内部反思房间。
 - 大段重复身份记忆
 - 与当前问题无关的关系承诺
 
-## 10. 下一阶段计划
+## 10. 下一阶段计划：按原版 Ombre-Brain 核心能力补齐
 
-### 阶段 1：继续收缩 Gateway
+这一版计划不再另起一条路线，而是在今天已经确认的方向上继续推进：
 
-- 保持 Scene Memory 保守。
-- 继续减少固定 prompt 注入。
-- Relationship Weather 默认不每轮注入。
-- Profile Wake 保留给 Dashboard / 手动查询。
+```text
+保留 Kiro Gateway 作为多端 / 新窗口 / 模型路由层
+↓
+把原版 Ombre-Brain 的主动工具精神逐步补进 memory core
+↓
+先内部 tool loop，后 MCP 兼容
+↓
+先保守候选，后正式写入
+```
 
-### 阶段 2：internal tool loop
+### 10.1 总原则
 
-- 先做 memory_breath。
-- 再做 read_bucket / trace。
-- 写入类工具先只生成候选，不直接落 permanent。
+- 不直接整仓替换为其他 Ombre-Brain fork。
+- 不让 Gateway 长期替 AI 做所有判断。
+- 不把所有记忆每轮塞进 prompt。
+- 写入必须先过门卫或候选审批。
+- 用户画像事实必须谨慎，不能由模型猜测直接写死。
+- AI 的 feel / I / Darkroom 与用户事实分层保存。
+- Word Map 只做观察和未来检索辅助，不做事实证据。
 
-### 阶段 3：写入规则重构
+### 10.2 与原版 Ombre-Brain 的差距表
 
-- 区分 dynamic、profile candidate、feel、I、Darkroom。
-- 用户事实必须有证据。
-- AI 情绪不写进用户事实。
+| 原版核心能力 | Kiro 当前状态 | 是否需要补 | 进入阶段 |
+| --- | --- | --- | --- |
+| breath 主动浮现 / 搜索 | 已有 memory_breath，但模式较少 | 需要 | A5-7 |
+| hold 写入短记忆 | 已有 memory_hold_candidate，只进候选 | 需要继续 | A5-6 / A5-8 |
+| grow 整理长内容 / 合并 | 未实现 | 需要 | A5-8 |
+| trace 管理 / 追踪 | 已有只读 memory_trace | 需要扩展 | A6 后 |
+| MCP 工具生态 | 暂无正式 MCP，只是内部 tool loop | 需要 | A6 |
+| feel 第一人称情绪沉淀 | 有 feel 类型，无完整主动写入 | 需要 | A7 |
+| I 自我认知 | 未形成独立层 | 需要 | A7 |
+| dream 消化 / 结晶 | 目前是 Dream Light | 中期需要 | A8 |
+| anchor / plan / letter | 有 plan 类型雏形，其他未完整 | 低优先级 | A8 |
+| 多通道召回 | 关键词 + ChromaDB + 分数 | 需要补强 | A5-7 |
+| 衰减 / 归档 / 维护 | 有雏形 | 需要持续 | A8 / A9 |
 
-### 阶段 4：A5 内在状态实现
+### 10.3 A5-6：写入门卫
 
-- 定 Relationship Weather 状态机。
-- 定 feel 写入条件。
-- 定 I 文件结构。
-- 定 Darkroom 自动 / 手动写入边界。
+目的：减少垃圾记忆、重复记忆和测试记忆污染。
 
-### 阶段 5：MCP 兼容层
+要做：
 
-- 暴露 MCP 工具。
-- 兼容 Claude Desktop / MCP 客户端。
-- 与 Web / PWA / App 共用 memory core。
+- 在 `memory_hold_candidate` 创建候选前增加 gate 判断。
+- 判断内容是否太短、太临时、像测试、像普通闲聊。
+- 检查是否与已有候选或已有 bucket 高度重复。
+- 区分 `dynamic`、`permanent`、`profile_candidate`、`feel`、`I`、`darkroom` 的写入风险。
+- 对 profile/user fact 要求 evidence 或明确用户原话。
+- Dashboard 显示 gate 决策：accepted / rejected / duplicate / too_ephemeral。
 
-### 阶段 6：多端产品化
+边界：
 
-- PWA
-- 登录 / 用户身份
-- 多设备 session 同步
-- 云端部署安全
-- Dashboard 权限
-- 模型切换管理
+- 本阶段仍不直接写正式长期记忆。
+- 本阶段不自动修改 User Portrait。
+- 本阶段不写 Darkroom 正文。
+
+### 10.4 A5-7：召回冷却与 breath 优化
+
+目的：减少同一条记忆短时间反复浮现，避免“重复复述我是谁”。
+
+要做：
+
+- 给自动 Scene Memory 和 `memory_breath` 加短期 recall cooldown。
+- Dashboard 显示最近召回过的 bucket id。
+- `memory_breath` 增加模式规划：query 搜索、自然浮现、按 tag / domain / importance 读取。
+- Word Map 继续不进 prompt，只保留为未来检索辅助。
+- 保持 Just Now 优先 session / recent turns，不进入长期记忆搜索。
+
+边界：
+
+- 不削弱用户明确要求“你还记得什么”的能力。
+- 不把 cooldown 当成永久屏蔽。
+
+### 10.5 A5-8：grow_candidate 与候选转正式记忆
+
+目的：让 AI 能提出“整理 / 合并 / 更新”而不是只新增。
+
+要做：
+
+- 新增 `memory_grow_candidate`。
+- 支持把长内容拆成 2-6 条候选记忆。
+- 支持提出“这条应该更新已有 bucket”。
+- Dashboard 增加候选审批动作：approve / reject / merge。
+- 审批通过后才写入正式 bucket，并生成 moment / edge。
+
+边界：
+
+- 模型不能自己绕过审批直接写 permanent。
+- profile_candidate 继续走单独审批规则。
+
+### 10.6 A6：MCP 兼容层
+
+目的：让支持 MCP 的客户端也能直接使用同一套 memory core。
+
+要做：
+
+- 把内部工具映射为 MCP 工具。
+- 第一批暴露：breath、read_bucket、trace、hold_candidate、pulse。
+- 后续再暴露 grow_candidate、profile_fact、darkroom_enter。
+- Web / PWA / App 继续走 Gateway，不与 MCP 冲突。
+
+边界：
+
+- MCP 层只是另一种入口，不另建一套记忆。
+- 所有入口共用同一个写入门卫。
+
+### 10.7 A7：feel / I 内在状态层
+
+目的：补回原版 Ombre-Brain 的“AI 自己的感受和自我认知”，但避免污染用户事实。
+
+要做：
+
+- 定义 feel 写入条件：只有强情绪、关系变化、重要体验才进入候选。
+- 定义 I 文件结构：偏好、边界、长期自我理解、承诺风格。
+- Relationship Weather 改为回复后的状态评估结果，而不是每轮固定注入材料。
+- Darkroom Door 只显示门状态，作为内在状态提示，不展示正文。
+
+边界：
+
+- feel 不是用户事实。
+- I 不是用户画像。
+- Relationship Weather 不应该每轮消耗 token。
+
+### 10.8 A8：Dream / Anchor / Plan / Letter 深化
+
+目的：补齐原版更长期的消化与保存能力。
+
+要做：
+
+- Dream 从 Dream Light 升级为“消化 / 结晶 / 维护”。
+- Anchor 用于坐标系记忆，不用于普通碎片事实。
+- Plan 用于承诺、待办、下一步项目动作。
+- Letter 用于需要永久保留的长文本。
+- 维护任务统一处理 decay、archive、word map rebuild、dream digestion。
+
+边界：
+
+- Dream 结果不默认塞进普通聊天。
+- Anchor / Letter 低频使用，不做普通记忆替代品。
+
+### 10.9 A9：多端与云端产品化
+
+目的：把 memory core 稳定用于 Web / PWA / App / MCP 多入口。
+
+要做：
+
+- 云端部署安全：Dashboard token、CORS、API key、runtime 数据隔离。
+- 多设备 session 同步。
+- PWA 离线缓存和聊天记录恢复。
+- 模型切换管理和失败降级。
+- 备份 / 恢复 / 导出。
 
 ## 11. 当前决策
 
 已经确认：
 
-- 设计方向接近原版 Ombre-Brain。
+- 设计方向接近原版 Ombre-Brain，但不会整仓替换。
 - Kiro Gateway 是新增唤醒层，不是替代 AI 判断。
 - Web / PWA / App 与 MCP 客户端不冲突。
-- 未来应先做 internal tool loop，再做完整 MCP 兼容。
-- A5 要先讨论内在状态边界，再写代码。
+- 当前先走 Internal Tool Loop，稳定后再做 MCP 兼容。
+- A5-5a 已完成 `memory_hold_candidate`，下一步进入 A5-6 写入门卫。
+- 原版核心能力会按阶段补入：写入门卫、召回冷却、grow、MCP、feel/I、dream。
+- 近期优先级最高的是写入质量，而不是继续增加 prompt 注入字段。
+
+
+
 
 ---
 
@@ -668,3 +785,61 @@ Gateway 准备上下文
 这一步是在 Web / PWA / App 体系里补回“AI 主动判断是否要记住”的能力。
 
 原版偏 MCP 工具生态；当前项目用 Kiro Gateway + Internal Tool Loop 来承接多端前端。`memory_hold_candidate` 是主动写入生态的第一块，但仍然保持保守：先候选，后确认。
+
+
+
+---
+
+## 17. A5-6 已实现：写入门卫
+
+A5-6 已在候选写入入口前加入 conservative write gate。
+
+### 覆盖入口
+
+- `memory_hold_candidate`：模型主动提出记忆候选时，先过门卫。
+- 自动记忆提取：对话后提取出的记忆，保存正式 bucket 前也先过门卫。
+
+### 当前判断
+
+门卫会先判断：
+
+- 内容是否为空或太短。
+- 是否像测试内容、占位内容、临时内容。
+- 是否与已有 pending candidate 重复。
+- 是否与已有 active bucket 重复。
+- 是否是高风险类型：`permanent`、`profile_candidate`、`I`、`darkroom`。
+- `profile_candidate` 如果没有 evidence id，会被拒绝。
+
+### 结果状态
+
+通过门卫：
+
+```text
+status: pending
+gate_decision: accepted
+```
+
+未通过门卫：
+
+```text
+status: rejected_by_gate / duplicate
+gate_decision: rejected / duplicate
+```
+
+这些记录仍然只在 `memory/candidates/`，不进入正式长期记忆。
+
+### Dashboard
+
+`Memory Candidate Queue` 会显示：
+
+- status
+- gate_decision
+- gate_code
+- gate_reason
+- duplicate 信息
+
+这样可以看到 AI 为什么提出记忆，也能看到系统为什么没有让它进入待确认队列。
+
+### 与原版 Ombre-Brain 的关系
+
+原版的 hold / grow 更强调 AI 主动记录，但真实使用中仍需要判断重复、短期噪音和长期价值。A5-6 是 Kiro 在 Web / PWA / App 场景下补上的写入门卫，保证主动写入不会变成自动污染。

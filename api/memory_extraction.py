@@ -5,6 +5,8 @@ Automatic memory extraction from each conversation.
 import json
 from typing import Dict, List, Optional
 from .memory import memory_system
+from .memory_candidates import create_memory_candidate
+from .memory_write_gate import evaluate_write_candidate
 from .ai_client import json_completion
 
 
@@ -71,20 +73,42 @@ Return JSON only. Do not use markdown fences. Do not explain.
 
 
 async def save_extracted_memory(extraction: Dict):
-    """Save an extracted memory candidate."""
+    """Save an extracted memory only after the conservative write gate passes."""
     if not extraction or not extraction.get('should_remember'):
         return
 
+    content = extraction.get('content', '')
+    title = extraction.get('name', '')
+    mem_type = extraction.get('type', 'dynamic')
+    gate = evaluate_write_candidate(
+        title=title,
+        content=content,
+        suggested_type=mem_type,
+        evidence_ids=[],
+    )
+    if not gate.get('accepted'):
+        create_memory_candidate(
+            title=title or 'Rejected extracted memory',
+            content=content,
+            suggested_type=mem_type,
+            reason=f"auto extraction rejected by write gate: {gate.get('code')}",
+            source='auto_extraction_gate',
+            evidence_ids=[],
+            confidence=0.4,
+        )
+        print(f"Skipped extracted memory by write gate: {gate.get('code')} - {content[:50]}...")
+        return None
+
     memory = memory_system.create_memory(
-        content=extraction['content'],
+        content=content,
         importance=extraction.get('importance', 5),
-        mem_type=extraction.get('type', 'dynamic'),
+        mem_type=mem_type,
         tags=extraction.get('tags', []),
         valence=extraction.get('valence', 0.5),
         arousal=extraction.get('arousal', 0.5),
-        name=extraction.get('name', ''),
+        name=title,
         domain=extraction.get('domain', '')
     )
 
-    print(f"Saved memory: {memory.id} - {extraction['content'][:50]}...")
+    print(f"Saved memory: {memory.id} - {content[:50]}...")
     return memory

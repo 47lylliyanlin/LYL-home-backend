@@ -294,9 +294,21 @@ def run_memory_tool(request: Dict) -> Dict:
 def render_tool_result_for_prompt(result: Dict) -> str:
     tool = result.get("tool")
     if tool == "memory_hold_candidate":
-        if not result.get("ok"):
-            return f"memory_hold_candidate failed: {result.get('error', 'unknown error')}"
         candidate = result.get("candidate") or {}
+        gate = result.get("gate") or {}
+        if not candidate:
+            return f"memory_hold_candidate failed: {result.get('error', 'unknown error')}"
+        if not result.get("ok"):
+            return "\n".join([
+                "Internal memory tool result: memory_hold_candidate",
+                "The write gate did not accept this as pending long-term memory. A review record may exist, but it is not a pending memory.",
+                "In the final answer, do not claim this was remembered or saved. Continue naturally.",
+                f"- candidate_id: {candidate.get('id')}",
+                f"  title: {candidate.get('title')}",
+                f"  status: {candidate.get('status')}",
+                f"  gate_code: {gate.get('code') or candidate.get('gate_code')}",
+                f"  gate_reason: {gate.get('reason') or candidate.get('gate_reason')}",
+            ])
         return "\n".join([
             "Internal memory tool result: memory_hold_candidate",
             "A pending memory candidate was created for later review. It is not confirmed long-term memory yet.",
@@ -305,6 +317,7 @@ def render_tool_result_for_prompt(result: Dict) -> str:
             f"  title: {candidate.get('title')}",
             f"  suggested_type: {candidate.get('suggested_type')}",
             f"  status: {candidate.get('status')}",
+            f"  gate_code: {gate.get('code') or candidate.get('gate_code')}",
         ])
 
     if tool == "memory_read_bucket":
@@ -375,15 +388,23 @@ def render_tool_result_for_prompt(result: Dict) -> str:
 def tool_result_summary(result: Dict) -> Dict:
     if result.get("tool") == "memory_hold_candidate":
         candidate = result.get("candidate") or {}
+        gate = result.get("gate") or {}
         return {
             "tool": result.get("tool"),
             "ok": result.get("ok", False),
             "error": result.get("error"),
+            "gate": {
+                "decision": gate.get("decision") or candidate.get("gate_decision"),
+                "code": gate.get("code") or candidate.get("gate_code"),
+                "reason": gate.get("reason") or candidate.get("gate_reason"),
+                "duplicate": gate.get("duplicate") or candidate.get("gate_duplicate"),
+            },
             "candidate": {
                 "id": candidate.get("id"),
                 "title": candidate.get("title"),
                 "suggested_type": candidate.get("suggested_type"),
                 "status": candidate.get("status"),
+                "gate_code": candidate.get("gate_code"),
             } if candidate else None,
             "memories": [],
             "count": 1 if candidate else 0,

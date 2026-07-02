@@ -1066,3 +1066,30 @@ Dashboard 已新增 `Memory Candidate Queue`，用于查看模型提出的候选
 - 当前只实现“创建候选”。
 - 还没有实现候选审批、合并到正式 bucket、或自动 grow。
 - 这一步是为了让 AI 先具备“我觉得这值得记住”的主动性，但确认和长期写入仍保守处理。
+
+---
+
+## 2026-07-03 补充：A5-6 写入门卫
+
+`memory_hold_candidate` 和自动记忆提取现在都会先经过写入门卫。
+
+### 门卫会拦截
+
+- 空内容或过短内容。
+- 测试 / 占位 / 临时内容。
+- 与已有候选或已有 bucket 高度重复的内容。
+- 没有 evidence 的 `profile_candidate`。
+
+### 候选状态
+
+| status | 含义 |
+| --- | --- |
+| pending | 通过门卫，等待后续审批或转正式记忆 |
+| rejected_by_gate | 被门卫拒绝，不进入待确认记忆 |
+| duplicate | 与已有候选或 bucket 高度相似 |
+
+`GET /api/memory/candidates` 会返回 `gate_decision`、`gate_code`、`gate_reason` 和 `gate_duplicate`，Dashboard 会展示这些字段。
+
+### 边界
+
+A5-6 仍不直接实现候选 approve / merge，也不直接把 `memory_hold_candidate` 写入 permanent。正式写入和合并留到 A5-8。
