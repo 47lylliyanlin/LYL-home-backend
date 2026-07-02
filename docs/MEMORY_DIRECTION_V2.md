@@ -589,3 +589,35 @@ Gateway 当前原则：
 - 返回内容会截断，避免 token 过高。
 
 这一步让流程从“主动搜索记忆”扩展到“主动读取某条记忆详情”。下一步才适合做 `memory_trace`，用于沿 moment / edge 追细节。
+
+---
+
+## 15. A5-4 已实现：memory_trace
+
+已在 internal tool loop 中加入第三个只读工具：`memory_trace`。
+
+模型可在需要追踪某条 bucket / moment 的上下文时请求：
+
+```json
+{"tool":"memory_trace","id":"mem_or_moment_id","reason":"用户要求追这条记忆的上下文"}
+```
+
+边界：
+
+- 只读 memory graph。
+- 可返回相关 moments 和 edges。
+- 不写入新记忆。
+- 不修改 use_count。
+- 不读取 archive bucket 正文。
+- 不读取 Darkroom 正文。
+- 返回数量有限制，避免 token 过高。
+
+至此，internal tool loop 的读工具闭环完成：
+
+```text
+memory_breath       搜索相关长期记忆
+memory_read_bucket  读取某条 bucket 详情
+memory_trace        沿 moment / edge 追上下文
+```
+
+下一阶段可以进入写入候选工具：`memory_hold_candidate` / `memory_grow_candidate`，但它们应先进入候选审批，不直接写 permanent。

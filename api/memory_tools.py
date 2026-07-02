@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 
 from .bucket_format import direct_seed_text
 from .memory import Memory, memory_system
+from .memory_graph import list_edges, list_moments
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -44,6 +45,8 @@ Internal memory tool option:
 {"tool":"memory_breath","query":"short search query","reason":"why this memory search is needed"}
 - If the relevant memory id is already available and the user asks to expand it, reply with exactly:
 {"tool":"memory_read_bucket","bucket_id":"mem_xxx","reason":"why this bucket detail is needed"}
+- If the user asks what happened around a surfaced memory, how it connects, or what followed, reply with exactly:
+{"tool":"memory_trace","id":"mem_or_moment_id","reason":"why graph context is needed"}
 - If you do not need memory, answer normally.
 """
 
@@ -87,6 +90,16 @@ def parse_tool_request(raw_text: str) -> Optional[Dict]:
         return {
             "tool": "memory_read_bucket",
             "bucket_id": bucket_id[:120],
+            "reason": reason,
+        }
+
+    if tool == "memory_trace":
+        trace_id = str(payload.get("id") or payload.get("bucket_id") or payload.get("moment_id") or "").strip()
+        if not trace_id:
+            return None
+        return {
+            "tool": "memory_trace",
+            "id": trace_id[:140],
             "reason": reason,
         }
 
@@ -160,11 +173,87 @@ def memory_read_bucket(bucket_id: str, content_limit: int = 2200) -> Dict:
     }
 
 
+def _moment_item(moment: Dict, content_limit: int = 700) -> Dict:
+    return {
+        "id": moment.get("id"),
+        "bucket_id": moment.get("bucket_id"),
+        "title": moment.get("title") or moment.get("id"),
+        "tags": moment.get("tags", []),
+        "created_at": moment.get("created_at"),
+        "content": _truncate(moment.get("content", ""), content_limit),
+    }
+
+
+def _edge_item(edge: Dict) -> Dict:
+    return {
+        "id": edge.get("id"),
+        "source_id": edge.get("source_id"),
+        "target_id": edge.get("target_id"),
+        "type": edge.get("type"),
+        "note": edge.get("note", ""),
+        "created_at": edge.get("created_at"),
+    }
+
+
+def memory_trace(trace_id: str, max_moments: int = 5, max_edges: int = 8) -> Dict:
+    """Trace graph context around an active bucket or moment without mutation."""
+    active_memory = _find_active_memory(trace_id)
+    all_moments = list_moments()
+    moments_by_id = {item.get("id"): item for item in all_moments}
+    target_moment = moments_by_id.get(trace_id)
+
+    related_moments: List[Dict] = []
+    if active_memory:
+        related_moments.extend(list_moments(bucket_id=trace_id))
+    elif target_moment:
+        related_moments.append(target_moment)
+        bucket_id = target_moment.get("bucket_id")
+        if bucket_id:
+            related_moments.extend(item for item in list_moments(bucket_id=bucket_id) if item.get("id") != trace_id)
+
+    related_edges = []
+    seen_edges = set()
+    for edge in list_edges():
+        source = edge.get("source_id")
+        target = edge.get("target_id")
+        if source == trace_id or target == trace_id:
+            related_edges.append(edge)
+            seen_edges.add(edge.get("id"))
+            continue
+        if active_memory and (source == active_memory.id or target == active_memory.id):
+            related_edges.append(edge)
+            seen_edges.add(edge.get("id"))
+            continue
+        if target_moment and (source == target_moment.get("bucket_id") or target == target_moment.get("bucket_id")):
+            related_edges.append(edge)
+            seen_edges.add(edge.get("id"))
+
+    related_moments = related_moments[:max_moments]
+    related_edges = related_edges[:max_edges]
+
+    return {
+        "tool": "memory_trace",
+        "id": trace_id,
+        "found": bool(active_memory or target_moment or related_moments or related_edges),
+        "target": {
+            "kind": "bucket" if active_memory else "moment" if target_moment else "unknown",
+            "id": trace_id,
+            "title": (active_memory.name if active_memory else target_moment.get("title") if target_moment else trace_id),
+            "type": active_memory.type if active_memory else None,
+        },
+        "moments": [_moment_item(item) for item in related_moments],
+        "edges": [_edge_item(item) for item in related_edges],
+        "count": len(related_moments) + len(related_edges),
+    }
+
+
 def run_memory_tool(request: Dict) -> Dict:
     if request.get("tool") == "memory_breath":
         return memory_breath(query=request.get("query", ""), top_k=3)
     if request.get("tool") == "memory_read_bucket":
         return memory_read_bucket(bucket_id=request.get("bucket_id", ""))
+    if request.get("tool") == "memory_trace":
+        return memory_trace(trace_id=request.get("id", ""))
     return {"tool": request.get("tool"), "error": "unsupported tool"}
 
 
@@ -184,6 +273,33 @@ def render_tool_result_for_prompt(result: Dict) -> str:
             f"  tags: {tags}",
             f"  content: {item.get('content')}",
         ])
+
+    if tool == "memory_trace":
+        if not result.get("found"):
+            return f"memory_trace found no graph context for id: {result.get('id', '')}"
+        lines = [
+            "Internal memory tool result: memory_trace",
+            "Use this graph context as optional background. Treat it as supporting context, not proof by itself.",
+            f"target: {result.get('target', {}).get('kind')} {result.get('id')}",
+        ]
+        if result.get("moments"):
+            lines.append("moments:")
+            for item in result.get("moments", []):
+                lines.append(
+                    "\n".join([
+                        f"- moment_id: {item.get('id')}",
+                        f"  bucket_id: {item.get('bucket_id')}",
+                        f"  title: {item.get('title')}",
+                        f"  preview: {item.get('content')}",
+                    ])
+                )
+        if result.get("edges"):
+            lines.append("edges:")
+            for item in result.get("edges", []):
+                lines.append(
+                    f"- edge_id: {item.get('id')} | {item.get('source_id')} --{item.get('type')}--> {item.get('target_id')} | {item.get('note')}"
+                )
+        return "\n".join(lines)
 
     memories = result.get("memories") or []
     if not memories:
@@ -221,6 +337,32 @@ def tool_result_summary(result: Dict) -> Dict:
                 "title": memory.get("title"),
                 "type": memory.get("type"),
             }] if result.get("found") else [],
+        }
+    if result.get("tool") == "memory_trace":
+        return {
+            "tool": result.get("tool"),
+            "id": result.get("id"),
+            "found": result.get("found", False),
+            "count": result.get("count", 0),
+            "target": result.get("target"),
+            "moments": [
+                {
+                    "id": item.get("id"),
+                    "bucket_id": item.get("bucket_id"),
+                    "title": item.get("title"),
+                }
+                for item in result.get("moments", [])
+            ],
+            "edges": [
+                {
+                    "id": item.get("id"),
+                    "source_id": item.get("source_id"),
+                    "target_id": item.get("target_id"),
+                    "type": item.get("type"),
+                }
+                for item in result.get("edges", [])
+            ],
+            "memories": [],
         }
     return {
         "tool": result.get("tool"),

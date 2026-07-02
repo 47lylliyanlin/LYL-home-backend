@@ -492,3 +492,17 @@
 
 - A5-4：memory_trace，沿 moment / edge 追细节。
 - 然后再进入写入候选工具和内在状态层。
+
+---
+
+## 🧭 2026年7月2日阶段更新：A5-4 memory_trace
+
+已完成 internal tool loop 第三个读工具：`memory_trace`。
+
+当前读工具链条：
+
+1. `memory_breath`：搜索相关长期记忆。
+2. `memory_read_bucket`：读取某条 bucket 详情。
+3. `memory_trace`：沿 moment / edge 追上下文。
+
+下一步建议：进入写入候选工具阶段，但先只做 candidate，不直接写入 permanent。

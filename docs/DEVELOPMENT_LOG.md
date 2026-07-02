@@ -1209,3 +1209,36 @@ internal tool loop 新增 `memory_read_bucket`。
 ### 3. 目的
 
 `memory_breath` 负责搜索，`memory_read_bucket` 负责展开某条 bucket。下一步可继续做 `memory_trace`。
+
+---
+
+## 📅 2026年7月2日 - A5-4 memory_trace
+
+### 1. 新增只读图追踪工具
+
+internal tool loop 新增 `memory_trace`。
+
+模型可请求：
+
+```json
+{"tool":"memory_trace","id":"mem_or_moment_id","reason":"..."}
+```
+
+### 2. 返回内容
+
+- target：bucket / moment / unknown
+- moments：相关 moment 列表
+- edges：相关 edge 列表
+- count：返回项数量
+
+### 3. 边界
+
+- 只读。
+- 不写入。
+- 不修改 use_count。
+- 不读取 Darkroom 正文。
+- 返回数量限制，避免 token 过高。
+
+### 4. 验证
+
+使用 `mem_20260626_013620_146122` 验证，成功返回对应 moment 和 continues edge。
