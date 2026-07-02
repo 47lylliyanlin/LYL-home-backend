@@ -13,6 +13,7 @@ from .bucket_format import direct_seed_text
 from .memory import Memory, memory_system
 from .memory_candidates import create_memory_candidate
 from .memory_graph import list_edges, list_moments
+from .recall_cooldown import filter_recent_explained, record_recall
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -43,7 +44,8 @@ Internal memory tool option:
 - Use this only when the current message truly needs long-term memory that is not already present in the context.
 - Do not use it for just-now / previous sentence / current-session questions; those are handled by recent chat context.
 - If you need to search memory, reply with exactly one compact JSON object and no other text:
-{"tool":"memory_breath","query":"short search query","reason":"why this memory search is needed"}
+{"tool":"memory_breath","query":"short search query","mode":"query","reason":"why this memory search is needed"}
+- memory_breath mode can be "query", "natural", "tag", "domain", or "importance". Use natural only when you want a light non-query memory emergence.
 - If the relevant memory id is already available and the user asks to expand it, reply with exactly:
 {"tool":"memory_read_bucket","bucket_id":"mem_xxx","reason":"why this bucket detail is needed"}
 - If the user asks what happened around a surfaced memory, how it connects, or what followed, reply with exactly:
@@ -79,11 +81,27 @@ def parse_tool_request(raw_text: str) -> Optional[Dict]:
     reason = str(payload.get("reason") or "").strip()[:300]
     if tool == "memory_breath":
         query = str(payload.get("query") or "").strip()
-        if not query:
+        mode = str(payload.get("mode") or "query").strip().lower()[:40]
+        if mode not in {"query", "natural", "tag", "domain", "importance"}:
+            mode = "query"
+        if mode == "query" and not query:
             return None
+        tags = payload.get("tags") or []
+        if isinstance(tags, str):
+            tags = [tags]
+        if not isinstance(tags, list):
+            tags = []
+        try:
+            importance_min = int(payload.get("importance_min", -1))
+        except (TypeError, ValueError):
+            importance_min = -1
         return {
             "tool": "memory_breath",
             "query": query[:240],
+            "mode": mode,
+            "domain": str(payload.get("domain") or "").strip()[:80],
+            "tags": [str(item).strip()[:80] for item in tags if str(item).strip()][:6],
+            "importance_min": importance_min,
             "reason": reason,
         }
 
@@ -143,19 +161,74 @@ def _memory_item(memory: Memory, item: Dict, content_limit: int) -> Dict:
     }
 
 
-def memory_breath(query: str, top_k: int = 3, content_limit: int = 650) -> Dict:
-    """Search active long-term memories without touching use_count."""
+def _natural_memory_items(top_k: int, domain: str = "", tags: Optional[List[str]] = None, importance_min: int = -1) -> List[Dict]:
+    tags = tags or []
+    memories = []
+    for memory in memory_system.load_all_memories(include_archive=False):
+        if memory.type in ("feel", "plan", "letter"):
+            continue
+        if domain and memory.domain != domain and memory.type != domain:
+            continue
+        if tags and not set(tags).intersection(set(memory.tags)):
+            continue
+        if importance_min >= 1 and memory.importance < importance_min:
+            continue
+        memories.append(memory)
+    memories.sort(key=lambda item: (item.calculate_score(), item.importance, item.last_active), reverse=True)
+    return [
+        {
+            "memory": memory,
+            "keyword_score": 0.0,
+            "vector_score": 0.0,
+            "base_score": round(min(memory.calculate_score(), 10.0), 3),
+            "final_score": round(min(memory.calculate_score(), 10.0), 3),
+        }
+        for memory in memories[: max(top_k * 3, top_k)]
+    ]
+
+
+def memory_breath(
+    query: str = "",
+    top_k: int = 3,
+    content_limit: int = 650,
+    mode: str = "query",
+    domain: str = "",
+    tags: Optional[List[str]] = None,
+    importance_min: int = -1,
+) -> Dict:
+    """Search or lightly surface active long-term memories without touching use_count."""
     top_k = min(max(int(top_k or 3), 1), 5)
-    explained = memory_system.explain_search_memories(query=query, top_k=top_k)
+    tags = tags or []
+    mode = mode if mode in {"query", "natural", "tag", "domain", "importance"} else "query"
+
+    if mode == "query":
+        explained = memory_system.explain_search_memories(query=query, top_k=max(top_k * 3, top_k))
+    else:
+        effective_importance = importance_min
+        if mode == "importance" and effective_importance < 1:
+            effective_importance = 8
+        explained = _natural_memory_items(top_k=max(top_k * 3, top_k), domain=domain, tags=tags, importance_min=effective_importance)
+
+    explained, cooldown_skipped = filter_recent_explained(explained, min_keep=1)
+    explained = explained[:top_k]
     memories: List[Dict] = []
+    recalled = []
     for item in explained:
         memory = item.get("memory")
         if not memory:
             continue
+        recalled.append(memory)
         memories.append(_memory_item(memory, item, content_limit))
+    if recalled:
+        record_recall(recalled, source=f"memory_breath:{mode}")
     return {
         "tool": "memory_breath",
         "query": query,
+        "mode": mode,
+        "domain": domain,
+        "tags": tags,
+        "importance_min": importance_min,
+        "cooldown_skipped": cooldown_skipped,
         "count": len(memories),
         "memories": memories,
     }
@@ -270,7 +343,14 @@ def memory_trace(trace_id: str, max_moments: int = 5, max_edges: int = 8) -> Dic
 
 def run_memory_tool(request: Dict) -> Dict:
     if request.get("tool") == "memory_breath":
-        return memory_breath(query=request.get("query", ""), top_k=3)
+        return memory_breath(
+            query=request.get("query", ""),
+            top_k=3,
+            mode=request.get("mode", "query"),
+            domain=request.get("domain", ""),
+            tags=request.get("tags", []),
+            importance_min=request.get("importance_min", -1),
+        )
     if request.get("tool") == "memory_read_bucket":
         return memory_read_bucket(bucket_id=request.get("bucket_id", ""))
     if request.get("tool") == "memory_trace":
@@ -369,6 +449,8 @@ def render_tool_result_for_prompt(result: Dict) -> str:
         "Internal memory tool result: memory_breath",
         f"query: {result.get('query', '')}",
         "Use these as optional background. Do not mention the tool unless the user asks.",
+        f"mode: {result.get('mode', 'query')}",
+        f"cooldown_skipped: {len(result.get('cooldown_skipped') or [])}",
     ]
     for item in memories:
         tags = ", ".join(item.get("tags") or []) or "none"
@@ -451,6 +533,11 @@ def tool_result_summary(result: Dict) -> Dict:
     return {
         "tool": result.get("tool"),
         "query": result.get("query"),
+        "mode": result.get("mode"),
+        "domain": result.get("domain"),
+        "tags": result.get("tags"),
+        "importance_min": result.get("importance_min"),
+        "cooldown_skipped": result.get("cooldown_skipped") or [],
         "count": result.get("count", 0),
         "memories": [
             {

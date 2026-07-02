@@ -585,7 +585,7 @@ Darkroom 是私密内部反思房间。
 - Kiro Gateway 是新增唤醒层，不是替代 AI 判断。
 - Web / PWA / App 与 MCP 客户端不冲突。
 - 当前先走 Internal Tool Loop，稳定后再做 MCP 兼容。
-- A5-5a 已完成 `memory_hold_candidate`，下一步进入 A5-6 写入门卫。
+- A5-5a / A5-6 / A5-7 已完成，下一步进入 A5-8：grow_candidate 与候选转正式记忆。
 - 原版核心能力会按阶段补入：写入门卫、召回冷却、grow、MCP、feel/I、dream。
 - 近期优先级最高的是写入质量，而不是继续增加 prompt 注入字段。
 
@@ -843,3 +843,60 @@ gate_decision: rejected / duplicate
 ### 与原版 Ombre-Brain 的关系
 
 原版的 hold / grow 更强调 AI 主动记录，但真实使用中仍需要判断重复、短期噪音和长期价值。A5-6 是 Kiro 在 Web / PWA / App 场景下补上的写入门卫，保证主动写入不会变成自动污染。
+
+---
+
+## 18. A5-7 已实现：召回冷却与 breath 优化
+
+A5-7 解决的是同一条记忆短时间反复浮现的问题。
+
+### 召回冷却
+
+新增 `api/recall_cooldown.py`，记录最近被自动 Scene Memory 或 `memory_breath` 浮现过的 bucket。
+
+默认配置：
+
+```text
+MEMORY_RECALL_COOLDOWN_ENABLED=true
+MEMORY_RECALL_COOLDOWN_MINUTES=45
+```
+
+含义：同一条 bucket 在短时间内不应反复作为普通背景浮现。冷却不是永久屏蔽，只是降低重复感。
+
+### 自动 Scene Memory 调整
+
+自动 Scene Memory 现在：
+
+- 不再修改 `use_count`。
+- 不再因为自动召回而强化某条记忆的重要性。
+- 会跳过最近浮现过的 bucket。
+- 如果全部被冷却，至少保留 1 条，避免相关问题完全没有记忆可用。
+
+这一步是为了避免“越召回越重要、越重要越召回”的循环。
+
+### memory_breath 轻模式
+
+`memory_breath` 现在支持：
+
+- `query`：按查询词搜索。
+- `natural`：轻量自然浮现。
+- `tag`：按标签筛选。
+- `domain`：按领域筛选。
+- `importance`：按重要度轻量浮现。
+
+这些模式仍然只读，不写入正式记忆，不修改 `use_count`。
+
+### Dashboard / Pulse
+
+Dashboard 会显示：
+
+- Scene Memory 被 cooldown 跳过的 id。
+- 当前 cooldown active bucket。
+- 剩余冷却秒数。
+
+Pulse 增加 `recall_cooldown` 状态，用于调试。
+
+### 与原版 Ombre-Brain 的关系
+
+原版 `breath` 更像主动浮现，不只是搜索。A5-7 让 Kiro 的 `memory_breath` 开始接近这个方向，同时用 cooldown 控制重复浮现，避免记忆变成复读。
+

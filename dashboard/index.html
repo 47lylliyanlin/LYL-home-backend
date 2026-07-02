@@ -204,6 +204,8 @@
       const concepts = (last.word_map_hints && last.word_map_hints.concepts) || [];
       const toolResult = last.tool_loop_result || {};
       const toolMemories = toolResult.memories || [];
+      const sceneSkipped = last.scene_cooldown_skipped || [];
+      const recallCooldown = last.recall_cooldown || {};
       const explanations = last.scene_explanations || [];
       const explanationRows = explanations.length
         ? explanations.map(item => `
@@ -230,6 +232,10 @@
         metric('tool requested', yn(last.tool_loop_requested)),
         metric('tool result count', toolMemories.length),
         `<div class="small mono">${escapeHtml(toolMemories.map(x => `${x.id}:${x.final_score}`).join(', ') || 'none')}</div>`,
+        metric('scene cooldown skipped', sceneSkipped.length),
+        `<div class="small mono">${escapeHtml(sceneSkipped.map(x => x.id).join(', ') || 'none')}</div>`,
+        metric('recall cooldown active', recallCooldown.count ?? 0),
+        `<div class="small mono">${escapeHtml((recallCooldown.active || []).map(x => `${x.id}:${x.remaining_seconds}s`).join(', ') || 'none')}</div>`,
         metric('just now triggered', yn(last.just_now_triggered)),
         metric('detail requested', yn(last.detail_requested)),
       ];
@@ -281,6 +287,8 @@
         metric('tool loop', yn(g.tool_loop_enabled)),
         metric('tool requested', yn(g.tool_loop_requested)),
         metric('tool results', g.tool_loop_result_count ?? 0),
+        metric('cooldown skipped', g.scene_cooldown_skipped_count ?? 0),
+        metric('cooldown active', g.recall_cooldown_count ?? 0),
       ].join('');
       $('aiConfig').innerHTML = [
         metric('profile', aiConfig.profile || ''),

@@ -1093,3 +1093,40 @@ Dashboard 已新增 `Memory Candidate Queue`，用于查看模型提出的候选
 ### 边界
 
 A5-6 仍不直接实现候选 approve / merge，也不直接把 `memory_hold_candidate` 写入 permanent。正式写入和合并留到 A5-8。
+
+---
+
+## 2026-07-03 补充：A5-7 召回冷却与 memory_breath 轻模式
+
+### 环境变量
+
+```text
+MEMORY_RECALL_COOLDOWN_ENABLED=true
+MEMORY_RECALL_COOLDOWN_MINUTES=45
+```
+
+### memory_breath
+
+Internal Tool Loop 的 `memory_breath` 现在支持 `mode`：
+
+| mode | 作用 |
+| --- | --- |
+| query | 按查询词搜索，默认模式 |
+| natural | 轻量自然浮现 |
+| tag | 按 tags 过滤 |
+| domain | 按 domain / type 过滤 |
+| importance | 优先浮现高重要度记忆 |
+
+示例：
+
+```json
+{"tool":"memory_breath","mode":"natural","reason":"需要轻量浮现一点背景"}
+```
+
+```json
+{"tool":"memory_breath","mode":"domain","domain":"project","reason":"需要项目相关背景"}
+```
+
+### 冷却行为
+
+自动 Scene Memory 和 `memory_breath` 都会记录短期召回状态。冷却期内，同一 bucket 会被普通召回跳过，减少重复复述。冷却不是永久禁用，用户明确追问某条记忆时仍可通过 `memory_read_bucket` 或 `memory_trace` 展开。

@@ -17,6 +17,7 @@ from .memory import Memory, memory_system
 from .memory_extraction import extract_memory_from_conversation, save_extracted_memory
 from .profile import profile_manager
 from .memory_graph import create_edge, create_moment, detail_context_from_ids, diffuse_from_seed_ids, needs_detail_recall, render_diffused_context
+from .recall_cooldown import filter_recent_memories, record_recall, recall_cooldown_status
 from .darkroom import darkroom_door_context
 from .dream import relationship_weather_context
 from .word_map import render_weak_concept_hints, weak_concept_hints
@@ -250,7 +251,8 @@ def build_recent_continuity(limit: int = 3) -> List[Memory]:
 
 def build_scene_memories(user_message: str, limit: int = 5, exclude_ids: Optional[set] = None) -> List[Memory]:
     exclude_ids = exclude_ids or set()
-    memories = memory_system.search_memories(user_message, top_k=limit + len(exclude_ids), touch=True)
+    # Automatic scene recall should not reinforce use_count by itself.
+    memories = memory_system.search_memories(user_message, top_k=limit + len(exclude_ids) + 5, touch=False)
     return [memory for memory in memories if memory.id not in exclude_ids][:limit]
 
 
@@ -351,8 +353,12 @@ def prepare_chat_turn(
     just_now_turns = session_turns if (just_now_triggered or detail_requested) else []
     auto_scene_enabled = _env_bool("MEMORY_AUTO_SCENE_ENABLED", True)
     scene_memories = []
+    scene_cooldown_skipped = []
     if auto_scene_enabled and not just_now_turns and not detail_requested:
-        scene_memories = build_scene_memories(user_message, exclude_ids=wake_ids)
+        scene_candidates = build_scene_memories(user_message, exclude_ids=wake_ids)
+        scene_memories, scene_cooldown_skipped = filter_recent_memories(scene_candidates, min_keep=1)
+        if scene_memories:
+            record_recall(scene_memories, source="auto_scene")
     scene_explanations = []
     if scene_memories:
         scene_ids = {memory.id for memory in scene_memories}
@@ -428,6 +434,8 @@ def prepare_chat_turn(
         "just_now_count": len(just_now_turns),
         "auto_scene_enabled": auto_scene_enabled,
         "scene_context": [_memory_ref(memory, "scene") for memory in scene_memories],
+        "scene_cooldown_skipped": scene_cooldown_skipped,
+        "recall_cooldown": recall_cooldown_status(limit=10),
         "scene_explanations": scene_explanations,
         "diffused_context": diffused_memories,
         "word_map_hints": word_hints,

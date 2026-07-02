@@ -13,6 +13,7 @@ from .gateway import get_last_injected_context
 from .memory import memory_system
 from .memory_graph import graph_status
 from .profile import profile_manager
+from .recall_cooldown import recall_cooldown_status
 from .word_map import load_word_map
 
 
@@ -60,7 +61,10 @@ def pulse_status() -> Dict:
             "tool_loop_requested": last_context.get("tool_loop_requested"),
             "tool_loop_tool": (last_context.get("tool_loop_request") or {}).get("tool"),
             "tool_loop_result_count": (last_context.get("tool_loop_result") or {}).get("count"),
+            "scene_cooldown_skipped_count": len(last_context.get("scene_cooldown_skipped") or []),
+            "recall_cooldown_count": (last_context.get("recall_cooldown") or {}).get("count"),
         },
+        "recall_cooldown": recall_cooldown_status(),
         "profile": {
             "documents": list(profiles.keys()),
             "candidate_count": len(candidates),
